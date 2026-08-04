@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. DATABASE & INFRASTRUCTURE SERVICES
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: aegis-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: aegis_admin
+      POSTGRES_PASSWORD: aegis_secure_pass
+      POSTGRES_DB: aegis_security_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../database/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis_admin -d aegis_security_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aegis-network
+    restart: always
+
+  mongodb:
+    image: mongo:6.0
+    container_name: aegis-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: aegis_root
+      MONGO_INITDB_ROOT_PASSWORD: aegis_mongo_pass
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aegis-network
+    restart: always
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: aegis-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_config:/mosquitto/config
+    networks:
+      - aegis-network
+    restart: always
+
+  minio:
+    image: minio/minio:RELEASE.2023-05-18T00-12-52Z
+    container_name: aegis-minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    environment:
+      MINIO_ROOT_USER: aegis_minio_user
+      MINIO_ROOT_PASSWORD: aegis_minio_pass
+    command: server /data --console-address ":9090"
+    volumes:
+      - minio_data:/data
+    networks:
+      - aegis-network
+    restart: always
+
+  # ==========================================
+  # 2. BACKEND MICROSERVICES
+  # ==========================================
+  authentication-service:
+    build:
+      context: ../../backend/authentication-service
+      dockerfile: Dockerfile
+    container_name: aegis-auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      - JWT_SECRET=super_secret_aegis_key_12345
+    networks:
+      - aegis-network
+    restart: always
+
+  user-service:
+    build:
+      context: ../../backend/user-service
+      dockerfile: Dockerfile
+    container_name: aegis-user-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://aegis_admin:aegis_secure_pass@postgres:5432/aegis_security_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aegis-network
+    restart: always
+
+  emergency-service:
+    build:
+      context: ../../backend/emergency-service
+      dockerfile: Dockerfile
+    container_name: aegis-emergency-service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://aegis_admin:aegis_secure_pass@postgres:5432/aegis_security_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aegis-network
+    restart: always
+
+  gps-service:
+    build:
+      context: ../../backend/gps-service
+      dockerfile: Dockerfile
+    container_name: aegis-gps-service
+    ports:
+      - "8004:8004"
+    environment:
+      - MONGO_URI=mongodb://aegis_root:aegis_mongo_pass@mongodb:27017/
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - aegis-network
+    restart: always
+
+  notification-service:
+    build:
+      context: ../../backend/notification-service
+      dockerfile: Dockerfile
+    container_name: aegis-notification-service
+    ports:
+      - "8005:8005"
+    networks:
+      - aegis-network
+    restart: always
+
+  ai-service:
+    build:
+      context: ../../backend/ai-service
+      dockerfile: Dockerfile
+    container_name: aegis-ai-service
+    ports:
+      - "8006:8006"
+    networks:
+      - aegis-network
+    restart: always
+
+networks:
+  aegis-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  mosquitto_config:
+  minio_data:

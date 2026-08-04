@@ -1,0 +1,31 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local SQLite Databases
+*.db
+backend/*.db
+tests/*.db
+
+# Log files
+*.log
+
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
+frontend-web/node_modules/
+
+# Expo directories
+.expo/
+web-build/
+
+# IDE files and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Environment configs
+.env
+.env.*

@@ -254,19 +254,32 @@ function loadProfileAndStart() {
     fetch(`${BACKEND_URL}/users/profile/${currentPhone}`, {
         headers: { "Authorization": `Bearer ${authToken}` }
     })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                // Stale session or user deleted from live DB. Log out to reset
+                handleLogout();
+                throw new Error("Session invalid or expired");
+            }
+            return res.json();
+        })
         .then(data => {
             document.getElementById("user-greeting-name").innerText = `Welcome Back, ${data.full_name || "User"}`;
             document.getElementById("blood-group").value = data.blood_group || "O+";
             document.getElementById("medical-conditions").value = data.medical_conditions || "None";
             document.getElementById("allergies").value = data.allergies || "None";
+            
+            loadContactsList();
+            showAuthScreen("dashboard");
         })
-        .catch(() => {
-            document.getElementById("user-greeting-name").innerText = "Welcome Back, User";
+        .catch(err => {
+            console.error("Session load failed:", err);
+            // If it failed due to network offline (e.g. Render booting up), let them see dashboard anyway
+            if (err.message !== "Session invalid or expired") {
+                document.getElementById("user-greeting-name").innerText = "Welcome Back, User";
+                loadContactsList();
+                showAuthScreen("dashboard");
+            }
         });
-        
-    loadContactsList();
-    showAuthScreen("dashboard");
 }
 
 function loadContactsList() {
@@ -276,11 +289,19 @@ function loadContactsList() {
     fetch(`${BACKEND_URL}/users/${currentPhone}/contacts`, {
         headers: { "Authorization": `Bearer ${authToken}` }
     })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) return [];
+            return res.json();
+        })
         .then(contacts => {
-            contacts.forEach(contact => {
-                appendContactUI(contact);
-            });
+            if (Array.isArray(contacts)) {
+                contacts.forEach(contact => {
+                    appendContactUI(contact);
+                });
+            } else {
+                appendContactUI({ contact_name: "Mom (Guardian)", phone_number: "+1234567891", priority: 1 });
+                appendContactUI({ contact_name: "Police Helpline", phone_number: "112", priority: 1 });
+            }
         })
         .catch(() => {
             appendContactUI({ contact_name: "Mom (Guardian)", phone_number: "+1234567891", priority: 1 });

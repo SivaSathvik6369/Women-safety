@@ -1,5 +1,5 @@
 // Configuration
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "https://women-safety-n4b9.onrender.com";
 
 // Global variables
 let activeIncidentId = null;
@@ -53,6 +53,33 @@ function showAuthScreen(screenName) {
         // Lazy initialize Leaflet map
         setTimeout(() => {
             initMap();
+        }, 100);
+    }
+}
+
+function switchTab(tabId) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    
+    // Show active tab
+    const targetTab = document.getElementById(`tab-${tabId}`);
+    if (targetTab) targetTab.classList.add('active');
+    
+    // Update active nav button
+    const activeBtn = Array.from(document.querySelectorAll('.nav-btn')).find(btn => {
+        const text = btn.innerText.toLowerCase();
+        if (tabId === 'routes') return text.includes('routes');
+        if (tabId === 'chatbot') return text.includes('assistant') || text.includes('chatbot');
+        if (tabId === 'profile') return text.includes('profile') || text.includes('contacts');
+        return text.includes(tabId);
+    });
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    // Redraw Leaflet map if entering maps tab
+    if (tabId === 'routes' && map) {
+        setTimeout(() => {
+            map.invalidateSize();
         }, 100);
     }
 }

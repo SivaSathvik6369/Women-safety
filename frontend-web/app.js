@@ -6,6 +6,8 @@ const DEFAULT_MAPBOX_KEY = "";
 let activeIncidentId = null;
 let currentPhone = null;
 let authToken = null;
+let watchId = null;
+let userMarker = null;
 
 // Leaflet Map Variables
 let map = null;
@@ -274,6 +276,9 @@ function loadProfileAndStart() {
             
             loadContactsList();
             showAuthScreen("dashboard");
+            
+            // Start real-time tracking
+            startRealTimeTracking();
         })
         .catch(err => {
             console.error("Session load failed:", err);
@@ -314,27 +319,113 @@ function loadContactsList() {
 }
 
 function handleLogout() {
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+    userMarker = null;
     localStorage.clear();
     authToken = null;
     currentPhone = null;
     showAuthScreen("login");
 }
 
-// 3. LEAFLET INDIAN MAP PLOTTER
+// 3. REAL-TIME GEOLOCATION TRACKING
+function startRealTimeTracking() {
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+    
+    if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                const userCoords = [lat, lng];
+
+                // Update coordinates inside active alarm UI
+                const gpsStatusVal = document.getElementById('gps-status-val');
+                if (gpsStatusVal) {
+                    gpsStatusVal.innerText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)} (Live Location)`;
+                }
+
+                // Plot pulsing dot indicator on map
+                if (map) {
+                    if (!userMarker) {
+                        const blueIcon = L.divIcon({
+                            className: 'user-location-dot',
+                            html: '<div class="pulse-dot"></div>',
+                            iconSize: [20, 20]
+                        });
+                        userMarker = L.marker(userCoords, { icon: blueIcon }).addTo(map)
+                            .bindPopup("<b>You are here</b><br>Secured by Aegis AI.")
+                            .openPopup();
+                        
+                        map.setView(userCoords, 14);
+                    } else {
+                        userMarker.setLatLng(userCoords);
+                    }
+                }
+
+                // Sync live coordinates to backend
+                sendLiveTelemetryToBackend(lat, lng);
+            },
+            (error) => {
+                console.warn("Geolocation watch error:", error);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 8000
+            }
+        );
+    }
+}
+
+async function sendLiveTelemetryToBackend(lat, lng) {
+    if (!authToken || !currentPhone) return;
+    try {
+        await fetch(`${BACKEND_URL}/gps/update`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                user_id: 1,
+                latitude: lat,
+                longitude: lng
+            })
+        });
+    } catch (e) {
+        console.error("Telemetry GPS update sync failed", e);
+    }
+}
+
+// 4. LEAFLET INDIAN MAP PLOTTER
 function initMap() {
     if (map) return;
     
-    const delhiCoords = [28.6139, 77.2090];
-    map = L.map('map').setView(delhiCoords, 13);
+    let centerCoords = [28.6139, 77.2090]; // Default Delhi fallback
+    if (userMarker) {
+        centerCoords = userMarker.getLatLng();
+    }
+    
+    map = L.map('map').setView(centerCoords, 13);
     
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    L.marker(delhiCoords).addTo(map)
-        .bindPopup('<b>Delhi Central Safe Hub</b><br>Secured Active Zone.')
-        .openPopup();
+    if (userMarker) {
+        // user location is already mapped
+    } else {
+        L.marker(centerCoords).addTo(map)
+            .bindPopup('<b>Aegis Central Safe Hub</b><br>Secured Active Zone.')
+            .openPopup();
+    }
 
     crimeHotspots.forEach(spot => {
         L.circle(spot.coords, {

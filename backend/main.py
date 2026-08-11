@@ -253,6 +253,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 # 5. MODULES ROUTING & IMPLEMENTATIONS
 # ==========================================
 
+from fastapi.responses import RedirectResponse
+
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/docs")
+
 @app.get("/health")
 def main_health():
     return {"status": "healthy", "service": "aegis-unified-monolith"}

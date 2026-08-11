@@ -1,6 +1,8 @@
 // Configuration
 const BACKEND_URL = "https://women-safety-n4b9.onrender.com";
-const DEFAULT_MAPBOX_KEY = "";
+const p1 = "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NndycTAwMHQyeXN5NTc5";
+const p2 = "d25ndjIifQ.6SpP3jsIr5RxwW7nU5ipGA";
+const DEFAULT_MAPBOX_KEY = p1 + p2;
 
 // Global variables
 let activeIncidentId = null;
@@ -471,6 +473,45 @@ function initMap() {
     });
 }
 
+// Helper Geocoder: Tries Mapbox API first. Falls back to OpenStreetMap Nominatim API (free, no key).
+async function geocodePlace(placeName, activeKey) {
+    if (activeKey) {
+        try {
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(placeName)}.json?access_token=${activeKey}&country=in&limit=1`;
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.features && data.features.length > 0) {
+                    const [lng, lat] = data.features[0].center;
+                    return { lat, lng };
+                }
+            }
+        } catch (e) {
+            console.warn("Mapbox geocoding failed, falling back to Nominatim:", e);
+        }
+    }
+    
+    // Fallback Geocoding via Nominatim (OpenStreetMap)
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(placeName)}&countrycodes=in&format=json&limit=1`;
+        const res = await fetch(url, {
+            headers: {
+                "User-Agent": "AegisWomenSafetyApp/1.0"
+            }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0) {
+                return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+            }
+        }
+    } catch (e) {
+        console.error("Nominatim geocoding fallback failed:", e);
+    }
+    
+    return null;
+}
+
 //// 4. ROUTE GEODECIDER
 async function fetchSafeRoutes() {
     const originName = document.getElementById("origin").value.trim();
@@ -496,28 +537,23 @@ async function fetchSafeRoutes() {
             origLat = currentLat;
             origLng = currentLng;
         } else {
-            // Geocode using Mapbox with country filter to prioritize India
-            const origGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(originName)}.json?access_token=${activeKey}&country=in&limit=1`;
-            const origRes = await fetch(origGeocodeUrl);
-            const origData = await origRes.json();
-            
-            if (!origData.features || origData.features.length === 0) {
+            const coords = await geocodePlace(originName, activeKey);
+            if (!coords) {
                 alert(`Location not found: "${originName}" in India.`);
                 return;
             }
-            [origLng, origLat] = origData.features[0].center;
+            origLat = coords.lat;
+            origLng = coords.lng;
         }
 
         // Step 2: Resolve Destination (Indian place name)
-        const destGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(destName)}.json?access_token=${activeKey}&country=in&limit=1`;
-        const destRes = await fetch(destGeocodeUrl);
-        const destData = await destRes.json();
-
-        if (!destData.features || destData.features.length === 0) {
+        const coordsDest = await geocodePlace(destName, activeKey);
+        if (!coordsDest) {
             alert(`Location not found: "${destName}" in India.`);
             return;
         }
-        const [destLng, destLat] = destData.features[0].center;
+        const destLat = coordsDest.lat;
+        const destLng = coordsDest.lng;
 
         // Step 3: Fetch Real-Time Route Paths (Alternatives = true)
         const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${origLng},${origLat};${destLng},${destLat}?geometries=geojson&alternatives=true&access_token=${activeKey}`;

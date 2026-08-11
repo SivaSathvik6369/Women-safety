@@ -377,6 +377,51 @@ def get_emergency_contacts(phone_number: str, db: Session = Depends(get_db)):
     return db.query(EmergencyContactDB).filter(EmergencyContactDB.user_id == user.id).all()
 
 # --- EMERGENCY SOS MODULE ---
+# Helper to send real SMS via Twilio API
+def send_twilio_sms(to_phone: str, message_body: str) -> bool:
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_phone = os.getenv("TWILIO_PHONE_NUMBER")
+    
+    if not account_sid or not auth_token or not from_phone:
+        print("Twilio parameters not fully set in environment.", file=sys.stderr)
+        return False
+        
+    try:
+        import base64
+        import urllib.request
+        import urllib.parse
+        
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+        
+        data = urllib.parse.urlencode({
+            "From": from_phone,
+            "To": to_phone,
+            "Body": message_body
+        }).encode("utf-8")
+        
+        auth_str = f"{account_sid}:{auth_token}"
+        auth_header = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+        
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Basic {auth_header}",
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            method="POST"
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_data = response.read().decode("utf-8")
+            print(f"Twilio SMS success response to {to_phone}: {res_data}")
+            return True
+    except Exception as e:
+        print(f"Twilio SMS delivery failed to {to_phone}: {e}", file=sys.stderr)
+        return False
+
+# --- EMERGENCY SOS MODULE ---
 @app.post("/emergency/sos/activate")
 def activate_sos(payload: SOSActivateRequest, db: Session = Depends(get_db)):
     db_incident = IncidentDB(
@@ -393,16 +438,41 @@ def activate_sos(payload: SOSActivateRequest, db: Session = Depends(get_db)):
         incident_id=db_incident.id, event_type="SOS_ACTIVATED",
         description=f"SOS triggered at Lat: {payload.latitude}, Long: {payload.longitude}"
     ))
+    
+    # Query emergency contacts for this user
+    contacts = db.query(EmergencyContactDB).filter(EmergencyContactDB.user_id == payload.user_id).all()
+    
+    # Fallback to query all contacts if specific query yielded none
+    if not contacts:
+        contacts = db.query(EmergencyContactDB).all()
+        
+    sms_body = (
+        f"🚨 Aegis Emergency SOS! Jane Doe needs help.\n"
+        f"Live tracking: https://www.google.com/maps?q={payload.latitude},{payload.longitude}"
+    )
+    
+    sms_status_descriptions = []
+    for contact in contacts:
+        if contact.is_active:
+            # Send real SMS
+            success = send_twilio_sms(contact.phone_number, sms_body)
+            status_desc = "Dispatched via Twilio" if success else "Simulated Queue (Twilio offline/unconfigured)"
+            sms_status_descriptions.append(f"{contact.contact_name} ({contact.phone_number}): {status_desc}")
+            
+    if not sms_status_descriptions:
+        sms_status_descriptions.append("No active contacts configured for SMS broadcasts.")
+        
     db.add(IncidentTimelineDB(
         incident_id=db_incident.id, event_type="SMS_SENT",
-        description="Emergency SMS with real-time location link sent to contacts."
+        description=f"SMS dispatch logs: {'; '.join(sms_status_descriptions)}"
     ))
     db.commit()
 
     return {
         "message": "SOS Alarm Activated Successfully",
         "incident_id": db_incident.id,
-        "status": "ACTIVE"
+        "status": "ACTIVE",
+        "sms_log": sms_status_descriptions
     }
 
 @app.post("/emergency/sos/deactivate")

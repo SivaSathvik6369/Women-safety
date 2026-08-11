@@ -184,7 +184,7 @@ async function handleRegister() {
 }
 
 async function handleLogin() {
-    const phone = document.getElementById("login-phone").value;
+    const phone = document.getElementById("login-phone").value.trim();
     const password = document.getElementById("login-pass").value;
 
     if (!phone || !password) {

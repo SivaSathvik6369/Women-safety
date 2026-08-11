@@ -8,6 +8,8 @@ let currentPhone = null;
 let authToken = null;
 let watchId = null;
 let userMarker = null;
+let currentLat = null;
+let currentLng = null;
 
 // Leaflet Map Variables
 let map = null;
@@ -403,28 +405,60 @@ async function sendLiveTelemetryToBackend(lat, lng) {
     }
 }
 
+function setToCurrentLocation() {
+    document.getElementById("origin").value = "My Current Location";
+}
+
 // 4. LEAFLET INDIAN MAP PLOTTER
 function initMap() {
     if (map) return;
     
-    let centerCoords = [28.6139, 77.2090]; // Default Delhi fallback
-    if (userMarker) {
+    // Default to Center of India: [20.5937, 78.9629] at zoom level 5 (National View) instead of hardcoded Delhi!
+    let centerCoords = [20.5937, 78.9629];
+    let zoomLevel = 5;
+    
+    if (currentLat && currentLng) {
+        centerCoords = [currentLat, currentLng];
+        zoomLevel = 14;
+    } else if (userMarker) {
         centerCoords = userMarker.getLatLng();
+        zoomLevel = 14;
     }
     
-    map = L.map('map').setView(centerCoords, 13);
+    map = L.map('map').setView(centerCoords, zoomLevel);
     
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    if (userMarker) {
-        // user location is already mapped
+    if (currentLat && currentLng) {
+        // location is active, let geowatcher draw the marker
     } else {
-        L.marker(centerCoords).addTo(map)
-            .bindPopup('<b>Aegis Central Safe Hub</b><br>Secured Active Zone.')
-            .openPopup();
+        // Query position once to center map immediately on load
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                currentLat = lat;
+                currentLng = lng;
+                const coords = [lat, lng];
+                
+                if (map) {
+                    map.setView(coords, 14);
+                    if (!userMarker) {
+                        const blueIcon = L.divIcon({
+                            className: 'user-location-dot',
+                            html: '<div class="pulse-dot"></div>',
+                            iconSize: [20, 20]
+                        });
+                        userMarker = L.marker(coords, { icon: blueIcon }).addTo(map)
+                            .bindPopup("<b>You are here</b><br>Secured by Aegis AI.")
+                            .openPopup();
+                    }
+                }
+            });
+        }
     }
 
     crimeHotspots.forEach(spot => {
@@ -437,10 +471,10 @@ function initMap() {
     });
 }
 
-// 4. ROUTE GEODECIDER
+//// 4. ROUTE GEODECIDER
 async function fetchSafeRoutes() {
-    const originName = document.getElementById("origin").value;
-    const destName = document.getElementById("destination").value;
+    const originName = document.getElementById("origin").value.trim();
+    const destName = document.getElementById("destination").value.trim();
 
     if (!originName || !destName) {
         alert("Please enter From and To location place names.");
@@ -451,24 +485,36 @@ async function fetchSafeRoutes() {
     const activeKey = inputKey.trim() || DEFAULT_MAPBOX_KEY;
 
     try {
-        // Step 1: Geocode Origin Place Name
-        const origGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(originName)}.json?access_token=${activeKey}&limit=1`;
-        const origRes = await fetch(origGeocodeUrl);
-        const origData = await origRes.json();
-        
-        if (!origData.features || origData.features.length === 0) {
-            alert(`Location not found: "${originName}"`);
-            return;
-        }
-        const [origLng, origLat] = origData.features[0].center;
+        let origLat, origLng;
 
-        // Step 2: Geocode Destination Place Name
-        const destGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(destName)}.json?access_token=${activeKey}&limit=1`;
+        // Step 1: Resolve Origin (Current Location or Indian place name)
+        if (originName.toLowerCase() === "my current location") {
+            if (currentLat === null || currentLng === null) {
+                alert("Waiting for browser GPS location lock... Please make sure location permissions are enabled.");
+                return;
+            }
+            origLat = currentLat;
+            origLng = currentLng;
+        } else {
+            // Geocode using Mapbox with country filter to prioritize India
+            const origGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(originName)}.json?access_token=${activeKey}&country=in&limit=1`;
+            const origRes = await fetch(origGeocodeUrl);
+            const origData = await origRes.json();
+            
+            if (!origData.features || origData.features.length === 0) {
+                alert(`Location not found: "${originName}" in India.`);
+                return;
+            }
+            [origLng, origLat] = origData.features[0].center;
+        }
+
+        // Step 2: Resolve Destination (Indian place name)
+        const destGeocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(destName)}.json?access_token=${activeKey}&country=in&limit=1`;
         const destRes = await fetch(destGeocodeUrl);
         const destData = await destRes.json();
 
         if (!destData.features || destData.features.length === 0) {
-            alert(`Location not found: "${destName}"`);
+            alert(`Location not found: "${destName}" in India.`);
             return;
         }
         const [destLng, destLat] = destData.features[0].center;

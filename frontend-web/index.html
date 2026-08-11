@@ -206,8 +206,11 @@
                     <p class="card-desc">Enter place names in India (e.g. Connaught Place, India Gate, Malviya Nagar, Saket) to evaluate safest path.</p>
                     
                     <div class="form-row">
-                        <input type="text" id="origin" placeholder="From Place Name (e.g. Connaught Place)" value="Connaught Place">
-                        <input type="text" id="destination" placeholder="To Place Name (e.g. India Gate)" value="India Gate">
+                        <div class="input-group">
+                            <input type="text" id="origin" placeholder="From Location" value="My Current Location">
+                            <button class="icon-btn" onclick="setToCurrentLocation()" type="button" title="Use Current Location">📍</button>
+                        </div>
+                        <input type="text" id="destination" placeholder="To Location (e.g. Mumbai, Saket, Delhi)" value="">
                         <button class="primary-btn" onclick="fetchSafeRoutes()">Find Safest Path</button>
                     </div>
 

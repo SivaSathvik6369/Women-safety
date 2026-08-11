@@ -41,6 +41,10 @@
                 <label>Password</label>
                 <input type="password" id="reg-pass" placeholder="Create secure password" value="password123">
             </div>
+            <div class="form-group">
+                <label>Confirm Password</label>
+                <input type="password" id="reg-confirm-pass" placeholder="Confirm your password" value="password123">
+            </div>
             
             <button class="primary-btn full-width" onclick="handleRegister()">Register Account</button>
             <p class="auth-footer">Already registered? <a href="#" onclick="showAuthScreen('login')">Login here</a></p>
@@ -340,11 +344,20 @@
                     <span>GPS Telemetry link:</span>
                     <span class="text-red" id="gps-status-val">Lat: 28.6139, Lng: 77.2090</span>
                 </div>
+                <div class="status-row" style="flex-direction: column; align-items: flex-start; gap: 8px; border: none;">
+                    <span>SOS Dispatch SMS Logs:</span>
+                    <div id="sos-dispatch-logs" style="color: var(--success); font-size: 13px; font-weight: 500; font-family: monospace; line-height: 1.5; background: rgba(0, 230, 118, 0.05); padding: 12px; border-radius: 8px; width: 100%; border: 0.5px dashed rgba(0, 230, 118, 0.2); max-height: 120px; overflow-y: auto;">
+                        No active broadcasts.
+                    </div>
+                </div>
             </div>
 
             <button class="safe-btn" onclick="deactivateSOS()">DEACTIVATE & MARK SAFE</button>
         </div>
     </div>
+
+    <!-- Active Toast Alerts Container -->
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>

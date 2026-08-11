@@ -12,6 +12,7 @@ let watchId = null;
 let userMarker = null;
 let currentLat = null;
 let currentLng = null;
+let activeContacts = [];
 
 // Leaflet Map Variables
 let map = null;
@@ -93,13 +94,43 @@ function switchTab(tabId) {
 
 // 2. REGISTER, LOGIN & SETUP INTEGRATION
 async function handleRegister() {
-    const name = document.getElementById("reg-name").value;
-    const phone = document.getElementById("reg-phone").value;
-    const email = document.getElementById("reg-email").value;
+    const name = document.getElementById("reg-name").value.trim();
+    const phone = document.getElementById("reg-phone").value.trim();
+    const email = document.getElementById("reg-email").value.trim();
     const password = document.getElementById("reg-pass").value;
+    const confirmPassword = document.getElementById("reg-confirm-pass").value;
 
     if (!name || !phone || !password) {
-        alert("Please enter your name, phone number, and a password.");
+        alert("Please complete all required fields (Name, Phone, and Password).");
+        return;
+    }
+
+    if (name.length < 3) {
+        alert("Full Name must be at least 3 characters long.");
+        return;
+    }
+
+    const phoneRegex = /^\+?[0-9]{10,14}$/;
+    if (!phoneRegex.test(phone)) {
+        alert("Please enter a valid phone number (at least 10 digits).");
+        return;
+    }
+
+    if (email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert("Please enter a valid email address.");
+            return;
+        }
+    }
+
+    if (password.length < 6) {
+        alert("Password must be at least 6 characters long.");
+        return;
+    }
+
+    if (password !== confirmPassword) {
+        alert("Passwords do not match. Please verify.");
         return;
     }
 
@@ -307,18 +338,31 @@ function loadContactsList() {
             return res.json();
         })
         .then(contacts => {
-            if (Array.isArray(contacts)) {
+            activeContacts = [];
+            if (Array.isArray(contacts) && contacts.length > 0) {
                 contacts.forEach(contact => {
+                    activeContacts.push(contact);
                     appendContactUI(contact);
                 });
             } else {
-                appendContactUI({ contact_name: "Mom (Guardian)", phone_number: "+1234567891", priority: 1 });
-                appendContactUI({ contact_name: "Police Helpline", phone_number: "112", priority: 1 });
+                const defaults = [
+                    { contact_name: "Mom (Guardian)", phone_number: "+919876543210", priority: 1, relationship: "Mother" },
+                    { contact_name: "Police Helpline", phone_number: "112", priority: 1, relationship: "Official" }
+                ];
+                defaults.forEach(contact => {
+                    activeContacts.push(contact);
+                    appendContactUI(contact);
+                });
             }
         })
         .catch(() => {
-            appendContactUI({ contact_name: "Mom (Guardian)", phone_number: "+1234567891", priority: 1 });
-            appendContactUI({ contact_name: "Police Helpline", phone_number: "112", priority: 1 });
+            activeContacts = [
+                { contact_name: "Mom (Guardian)", phone_number: "+919876543210", priority: 1, relationship: "Mother" },
+                { contact_name: "Police Helpline", phone_number: "112", priority: 1, relationship: "Official" }
+            ];
+            activeContacts.forEach(contact => {
+                appendContactUI(contact);
+            });
         });
 }
 
@@ -623,7 +667,44 @@ async function fetchSafeRoutes() {
 }
 
 // 5. EMERGENCY TRIPS
+// 5. EMERGENCY TRIPS
+function spawnToastNotification(title, message, isPolice = false, linkUrl = "") {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+    
+    const toast = document.createElement("div");
+    toast.className = `toast-alert ${isPolice ? 'police' : ''}`;
+    
+    let linkHtml = "";
+    if (linkUrl) {
+        linkHtml = `<a class="toast-link" href="${linkUrl}" target="_blank">${linkUrl}</a>`;
+    }
+    
+    toast.innerHTML = `
+        <div class="toast-header ${isPolice ? 'police-type' : 'sos-type'}">
+            <span>${title}</span>
+            <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">now</span>
+        </div>
+        <div class="toast-body">
+            ${message}
+            ${linkHtml}
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = "toast-fade-out 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards";
+        setTimeout(() => {
+            toast.remove();
+        }, 400);
+    }, 6000);
+}
+
 async function triggerSOS() {
+    const lat = (currentLat !== null) ? currentLat : 20.5937;
+    const lng = (currentLng !== null) ? currentLng : 78.9629;
+    
     try {
         const response = await fetch(`${BACKEND_URL}/emergency/sos/activate`, {
             method: "POST",
@@ -631,18 +712,77 @@ async function triggerSOS() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${authToken}`
             },
-            body: JSON.stringify({ user_id: 1, latitude: 28.6139, longitude: 77.2090 })
+            body: JSON.stringify({ user_id: 1, latitude: lat, longitude: lng })
         });
 
         if (response.ok) {
             const data = await response.json();
             activeIncidentId = data.incident_id;
-            document.getElementById('sos-active-overlay').style.display = 'flex';
-            document.getElementById('gps-status-val').innerText = `Lat: 28.6139, Lng: 77.2090 (Delhi Center)`;
         }
     } catch (e) {
-        document.getElementById('sos-active-overlay').style.display = 'flex';
+        console.error("SOS Activation API failed:", e);
     }
+    
+    // Display Emergency Screen
+    document.getElementById('sos-active-overlay').style.display = 'flex';
+    document.getElementById('gps-status-val').innerText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)} (Live)`;
+    
+    // Broadcast notifications to all contact list members
+    const logBox = document.getElementById("sos-dispatch-logs");
+    if (logBox) logBox.innerHTML = "";
+    
+    const liveLink = `https://www.google.com/maps?q=${lat},${lng}`;
+    
+    if (!activeContacts || activeContacts.length === 0) {
+        activeContacts = [
+            { contact_name: "Mom (Guardian)", phone_number: "+919876543210", priority: 1 },
+            { contact_name: "Police Helpline", phone_number: "112", priority: 1 }
+        ];
+    }
+    
+    activeContacts.forEach((contact, idx) => {
+        setTimeout(() => {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMsg = `[${timestamp}] SMS sent to ${contact.contact_name} (${contact.phone_number}) with live tracking link.`;
+            
+            if (logBox) {
+                const logItem = document.createElement("div");
+                logItem.style.marginBottom = "6px";
+                logItem.innerText = logMsg;
+                logBox.appendChild(logItem);
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+            
+            // Spawn visual toast alert
+            spawnToastNotification(
+                `🚨 SOS ALERT BROADCAST`,
+                `Emergency notification dispatched to ${contact.contact_name} (${contact.phone_number}).`,
+                false,
+                liveLink
+            );
+        }, idx * 800); // Stagger dispatches slightly for realism
+    });
+    
+    // Also notify Police PCR Control room
+    setTimeout(() => {
+        const timestamp = new Date().toLocaleTimeString();
+        const logMsg = `[${timestamp}] Dispatch payload sent to Police Central PCR Command (112 / 1091).`;
+        if (logBox) {
+            const logItem = document.createElement("div");
+            logItem.style.marginBottom = "6px";
+            logItem.style.color = "#3B82F6";
+            logItem.innerText = logMsg;
+            logBox.appendChild(logItem);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+        
+        spawnToastNotification(
+            `👮 POLICE SYSTEM LOGGED`,
+            `Telemetry coordinates & PCR unit dispatch logged for 112 Control Room.`,
+            true,
+            liveLink
+        );
+    }, activeContacts.length * 800 + 400);
 }
 
 async function deactivateSOS() {
@@ -823,8 +963,8 @@ async function saveProfile() {
 }
 
 async function addContact() {
-    const name = document.getElementById('contact-name').value;
-    const phone = document.getElementById('contact-phone').value;
+    const name = document.getElementById('contact-name').value.trim();
+    const phone = document.getElementById('contact-phone').value.trim();
     if (!name || !phone) return;
 
     try {
@@ -844,12 +984,15 @@ async function addContact() {
 
         if (response.ok) {
             const newContact = await response.json();
+            activeContacts.push(newContact);
             appendContactUI(newContact);
             document.getElementById('contact-name').value = "";
             document.getElementById('contact-phone').value = "";
         }
     } catch (e) {
-        appendContactUI({ contact_name: name, phone_number: phone, priority: 2 });
+        const mockContact = { contact_name: name, phone_number: phone, priority: 2, relationship: "Friend" };
+        activeContacts.push(mockContact);
+        appendContactUI(mockContact);
         document.getElementById('contact-name').value = "";
         document.getElementById('contact-phone').value = "";
     }

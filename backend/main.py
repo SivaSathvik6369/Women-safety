@@ -607,6 +607,38 @@ def predict_risk_score(payload: RiskPredictPayload):
 
 @app.post("/ai/chatbot")
 def consult_safety_chatbot(payload: ChatbotPayload):
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    if api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            system_instruction = (
+                "You are Aegis, a compassionate, expert AI safety assistant in a Women's Safety application. "
+                "Provide helpful, concise safety advice, self-defense tactics, first aid directions, or legal safety information. "
+                "Keep responses under 3-4 sentences. If the user indicates danger, immediately urge them to press the SOS button and call 112."
+            )
+            req_payload = {
+                "contents": [{
+                    "parts": [{"text": f"System Instruction: {system_instruction}\nUser Query: {payload.message}"}]
+                }]
+            }
+            
+            import urllib.request
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(req_payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            
+            with urllib.request.urlopen(req, timeout=8) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                return {"reply": reply_text.strip()}
+        except Exception as e:
+            print(f"Gemini API query error: {e}", file=sys.stderr)
+
+    # Fallback response system
     user_msg = payload.message.lower()
     if "police" in user_msg:
         response = "The nearest police station is at 12th Avenue, Main Block (450m away). Phone helpline is 112."

@@ -8,7 +8,8 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
-  Alert
+  Alert,
+  Linking
 } from 'react-native';
 import { api } from '../services/api';
 
@@ -34,6 +35,16 @@ export default function MapScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openGoogleMaps = () => {
+    if (!destination.trim()) {
+      Alert.alert('Destination Required', 'Please enter a destination first.');
+      return;
+    }
+    const originParam = origin === 'My Current Location' ? 'My Location' : encodeURIComponent(origin);
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${originParam}&destination=${encodeURIComponent(destination)}&travelmode=walking`;
+    Linking.openURL(url);
   };
 
   const safeRoute = routeResults?.safest_route || {
@@ -149,6 +160,13 @@ export default function MapScreen() {
             <Text style={styles.tagRed}>⚠️ Low CCTV Coverage ({altRoute.parameters.cctv_coverage})</Text>
             <Text style={styles.tagRed}>⚠️ Isolated Alley Segments Warning</Text>
           </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.gmapsLaunchBtn}
+          onPress={openGoogleMaps}
+        >
+          <Text style={styles.gmapsLaunchText}>🗺️ Open All Routes in Google Maps</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -318,12 +336,24 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  gmapsLaunchBtn: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  gmapsLaunchText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
   navigateButton: {
     backgroundColor: '#FF4A6B',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 8,
     marginBottom: 24,
   },
   navigateText: {

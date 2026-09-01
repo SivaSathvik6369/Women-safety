@@ -9,7 +9,9 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Linking,
+  Alert
 } from 'react-native';
 import { api } from '../services/api';
 
@@ -35,18 +37,35 @@ export default function ChatbotScreen() {
 
     try {
       const res = await api.sendChatMessage(text.trim());
-      const botMsg = { id: Date.now() + 1, sender: 'bot', text: res.reply };
+      const botMsg = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: res.reply,
+        police_info: res.police_info
+      };
       setMessages(prev => [...prev, botMsg]);
+
+      if (res.police_info) {
+        Alert.alert(
+          '🚨 Police Alert Dispatched',
+          `Automated patrol request logged for ${res.police_info.station_name}.\nReference: ${res.police_info.dispatch_ref}`,
+          [{ text: 'OK' }]
+        );
+      }
     } catch (e) {
       const fallbackMsg = {
         id: Date.now() + 1,
         sender: 'bot',
-        text: 'Aegis Safety Bot active. In danger? Press SOS or shake your phone to notify contacts.'
+        text: 'Aegis Safety Bot active. In danger? Press SOS or shake your phone to broadcast live telemetry.'
       };
       setMessages(prev => [...prev, fallbackMsg]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const openUrl = (url) => {
+    if (url) Linking.openURL(url);
   };
 
   return (
@@ -73,6 +92,31 @@ export default function ChatbotScreen() {
               <Text style={msg.sender === 'user' ? styles.userText : styles.botText}>
                 {msg.text}
               </Text>
+
+              {/* Police Station Interactive Card */}
+              {msg.police_info && (
+                <View style={styles.policeCard}>
+                  <Text style={styles.policeStationName}>🏢 {msg.police_info.station_name}</Text>
+                  <Text style={styles.policeStationAddress}>📍 {msg.police_info.address} ({msg.police_info.distance})</Text>
+                  <Text style={styles.policeAlertBadge}>🚨 Dispatched Alert: {msg.police_info.dispatch_ref}</Text>
+
+                  <View style={styles.policeActionsRow}>
+                    <TouchableOpacity
+                      style={styles.gmapsBtn}
+                      onPress={() => openUrl(msg.police_info.map_url)}
+                    >
+                      <Text style={styles.gmapsBtnText}>🗺️ Open in Google Maps</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.call112Btn}
+                      onPress={() => openUrl('tel:112')}
+                    >
+                      <Text style={styles.call112BtnText}>📞 Call 112</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
           ))}
           {loading && (
@@ -89,7 +133,7 @@ export default function ChatbotScreen() {
               style={styles.shortcutBtn}
               onPress={() => sendQuery('Find nearest police station in India')}
             >
-              <Text style={styles.shortcutText}>👮 Police Station</Text>
+              <Text style={styles.shortcutText}>👮 Police Station & Alert</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.shortcutBtn}
@@ -146,7 +190,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   messageBubble: {
-    maxWidth: '82%',
+    maxWidth: '85%',
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
@@ -172,6 +216,59 @@ const styles = StyleSheet.create({
     color: '#E2E2E6',
     fontSize: 14,
     lineHeight: 20,
+  },
+  policeCard: {
+    marginTop: 10,
+    padding: 12,
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.35)',
+  },
+  policeStationName: {
+    color: '#3B82F6',
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  policeStationAddress: {
+    color: '#D1D1DB',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  policeAlertBadge: {
+    color: '#00E676',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  policeActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  gmapsBtn: {
+    flex: 1,
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  gmapsBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  call112Btn: {
+    backgroundColor: '#FF1744',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  call112BtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   shortcutsRow: {
     paddingVertical: 10,

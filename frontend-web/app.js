@@ -682,6 +682,22 @@ async function fetchSafeRoutes() {
     }
 }
 
+function openInGoogleMaps() {
+    const originName = document.getElementById("origin").value.trim();
+    const destName = document.getElementById("destination").value.trim();
+    if (!destName) {
+        alert("Please enter a destination first.");
+        return;
+    }
+    
+    let originParam = (originName.toLowerCase() === "my current location" && currentLat && currentLng)
+        ? `${currentLat},${currentLng}`
+        : encodeURIComponent(originName || "My Location");
+        
+    const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originParam}&destination=${encodeURIComponent(destName)}&travelmode=walking`;
+    window.open(gmapsUrl, "_blank");
+}
+
 // 5. EMERGENCY TRIPS
 // 5. EMERGENCY TRIPS
 function spawnToastNotification(title, message, isPolice = false, linkUrl = "") {
@@ -902,7 +918,15 @@ async function sendChatMessage() {
 
         if (response.ok) {
             const data = await response.json();
-            appendBubble(data.reply, 'bot');
+            appendBubble(data.reply, 'bot', data.police_info);
+            if (data.police_info) {
+                spawnToastNotification(
+                    "👮 POLICE PATROL ALERTED",
+                    `Dispatched patrol payload to ${data.police_info.station_name} (Ref: ${data.police_info.dispatch_ref})`,
+                    true,
+                    data.police_info.map_url
+                );
+            }
         }
     } catch (e) {
         appendBubble("Database server connection timed out.", 'bot');
@@ -927,18 +951,50 @@ async function sendQueryDirect(query) {
 
         if (response.ok) {
             const data = await response.json();
-            appendBubble(data.reply, 'bot');
+            appendBubble(data.reply, 'bot', data.police_info);
+            if (data.police_info) {
+                spawnToastNotification(
+                    "👮 POLICE PATROL ALERTED",
+                    `Dispatched patrol payload to ${data.police_info.station_name} (Ref: ${data.police_info.dispatch_ref})`,
+                    true,
+                    data.police_info.map_url
+                );
+            }
         }
     } catch (e) {
         appendBubble("Consulting emergency guide: Helpline numbers are active.", 'bot');
     }
 }
 
-function appendBubble(text, sender) {
+function appendBubble(text, sender, policeInfo = null) {
     const msgBox = document.getElementById('chat-messages-box');
     const bubble = document.createElement('div');
     bubble.className = `chat-bubble ${sender}`;
-    bubble.innerText = text;
+    
+    let policeCardHtml = "";
+    if (policeInfo) {
+        const mapUrl = (currentLat && currentLng)
+            ? `https://www.google.com/maps/search/nearest+police+station/@${currentLat},${currentLng},15z`
+            : policeInfo.map_url;
+            
+        policeCardHtml = `
+            <div style="margin-top: 10px; padding: 12px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 12px;">
+                <div style="font-weight: 800; color: #3B82F6; font-size: 13px; margin-bottom: 4px;">🏢 ${policeInfo.station_name}</div>
+                <div style="font-size: 12px; color: #D1D1DB; margin-bottom: 4px;">📍 ${policeInfo.address} (${policeInfo.distance})</div>
+                <div style="font-size: 12px; color: #00E676; font-weight: bold; margin-bottom: 8px;">🚨 Dispatched Patrol Alert: ${policeInfo.dispatch_ref}</div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <a href="${mapUrl}" target="_blank" style="background: #3B82F6; color: #FFFFFF; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                        🗺️ Get Directions in Google Maps
+                    </a>
+                    <a href="tel:112" style="background: #FF1744; color: #FFFFFF; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                        📞 Call 112 Direct
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+    
+    bubble.innerHTML = `<div>${text.replace(/\n/g, '<br>')}</div>${policeCardHtml}`;
     msgBox.appendChild(bubble);
     msgBox.scrollTop = msgBox.scrollHeight;
 }

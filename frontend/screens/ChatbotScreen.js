@@ -1,50 +1,72 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator
+} from 'react-native';
+import { api } from '../services/api';
 
 export default function ChatbotScreen() {
   const [messages, setMessages] = useState([
-    { id: 1, sender: 'bot', text: 'Hello! I am Aegis AI Safety Assistant. How can I guide or help you today?' }
+    {
+      id: 1,
+      sender: 'bot',
+      text: 'Hello! I am Aegis AI Safety Assistant. How can I guide or assist you today?'
+    }
   ]);
   const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollViewRef = useRef();
 
-  const sendQuery = (text) => {
-    if (!text.trim()) return;
-    
-    const userMsg = { id: messages.length + 1, sender: 'user', text };
+  const sendQuery = async (text) => {
+    if (!text || !text.trim()) return;
+
+    const userMsg = { id: Date.now(), sender: 'user', text: text.trim() };
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
+    setLoading(true);
 
-    // Simulate response call to AI Service Chatbot
-    setTimeout(() => {
-      let response = "I'm checking emergency guidelines for you. Please let me know if you need to dispatch SOS.";
-      const query = text.toLowerCase();
-      
-      if (query.includes('police')) {
-        response = "The nearest police station is at 12th Avenue, Main Block (450m). Dial 112 for direct dispatch.";
-      } else if (query.includes('first aid') || query.includes('bleed') || query.includes('hurt')) {
-        response = "Apply firm pressure to the wound. Keep the area elevated. Call ambulance services at 102/108.";
-      } else if (query.includes('law') || query.includes('rights')) {
-        response = "Under Section 354 IPC, women have the right to file Zero FIR from any police station. Legal help is free.";
-      }
-
-      const botMsg = { id: messages.length + 2, sender: 'bot', text: response };
+    try {
+      const res = await api.sendChatMessage(text.trim());
+      const botMsg = { id: Date.now() + 1, sender: 'bot', text: res.reply };
       setMessages(prev => [...prev, botMsg]);
-    }, 800);
+    } catch (e) {
+      const fallbackMsg = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        text: 'Aegis Safety Bot active. In danger? Press SOS or shake your phone to notify contacts.'
+      };
+      setMessages(prev => [...prev, fallbackMsg]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Messages Stream */}
-        <ScrollView contentContainerStyle={styles.messagesContainer}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.messagesContainer}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
           {messages.map(msg => (
-            <View 
-              key={msg.id} 
+            <View
+              key={msg.id}
               style={[
-                styles.messageBubble, 
+                styles.messageBubble,
                 msg.sender === 'user' ? styles.userBubble : styles.botBubble
               ]}
             >
@@ -53,31 +75,59 @@ export default function ChatbotScreen() {
               </Text>
             </View>
           ))}
+          {loading && (
+            <View style={[styles.messageBubble, styles.botBubble, { paddingVertical: 14 }]}>
+              <ActivityIndicator color="#FF4A6B" size="small" />
+            </View>
+          )}
         </ScrollView>
 
         {/* Quick Help Shortcuts */}
         <View style={styles.shortcutsRow}>
-          <TouchableOpacity style={styles.shortcutBtn} onPress={() => sendQuery("Find nearest police station")}>
-            <Text style={styles.shortcutText}>👮 Police Location</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.shortcutBtn} onPress={() => sendQuery("First aid guide")}>
-            <Text style={styles.shortcutText}>🩹 First Aid</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.shortcutBtn} onPress={() => sendQuery("Legal rights information")}>
-            <Text style={styles.shortcutText}>⚖️ Legal Rights</Text>
-          </TouchableOpacity>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
+            <TouchableOpacity
+              style={styles.shortcutBtn}
+              onPress={() => sendQuery('Find nearest police station in India')}
+            >
+              <Text style={styles.shortcutText}>👮 Police Station</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shortcutBtn}
+              onPress={() => sendQuery('First aid guide for injuries')}
+            >
+              <Text style={styles.shortcutText}>🩹 First Aid</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shortcutBtn}
+              onPress={() => sendQuery('Legal safety rights for women in India')}
+            >
+              <Text style={styles.shortcutText}>⚖️ Legal Rights</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shortcutBtn}
+              onPress={() => sendQuery('Self defense tactics')}
+            >
+              <Text style={styles.shortcutText}>🥋 Self Defense</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
-        {/* Typing Bar */}
+        {/* Input Bar */}
         <View style={styles.inputBar}>
-          <TextInput 
+          <TextInput
             style={styles.textInput}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask anything about security, laws, navigation..."
+            placeholder="Ask anything about security, laws, guidance..."
             placeholderTextColor="#8E8E9E"
+            onSubmitEditing={() => sendQuery(inputText)}
+            returnKeyType="send"
           />
-          <TouchableOpacity style={styles.sendButton} onPress={() => sendQuery(inputText)}>
+          <TouchableOpacity
+            style={styles.sendButton}
+            onPress={() => sendQuery(inputText)}
+            disabled={loading}
+          >
             <Text style={styles.sendButtonText}>Send</Text>
           </TouchableOpacity>
         </View>
@@ -93,11 +143,12 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     padding: 16,
+    paddingBottom: 20,
   },
   messageBubble: {
-    maxWidth: '80%',
-    borderRadius: 15,
-    padding: 12,
+    maxWidth: '82%',
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 12,
   },
   userBubble: {
@@ -115,14 +166,14 @@ const styles = StyleSheet.create({
   userText: {
     color: '#FFFFFF',
     fontSize: 14,
+    lineHeight: 20,
   },
   botText: {
     color: '#E2E2E6',
     fontSize: 14,
+    lineHeight: 20,
   },
   shortcutsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
     paddingVertical: 10,
     backgroundColor: '#0F0F1A',
     borderTopWidth: 0.5,
@@ -130,38 +181,43 @@ const styles = StyleSheet.create({
   },
   shortcutBtn: {
     backgroundColor: '#1E1E2C',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderRadius: 20,
+    paddingHorizontal: 14,
     paddingVertical: 8,
+    marginRight: 8,
     borderWidth: 0.5,
     borderColor: '#3E3E5C',
   },
   shortcutText: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '600',
   },
   inputBar: {
     flexDirection: 'row',
     padding: 12,
     backgroundColor: '#1E1E2C',
     alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#2F2F45',
   },
   textInput: {
     flex: 1,
     backgroundColor: '#0F0F1A',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     color: '#FFFFFF',
     marginRight: 10,
     fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#2F2F45',
   },
   sendButton: {
     backgroundColor: '#FF4A6B',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   sendButtonText: {
     color: '#FFFFFF',

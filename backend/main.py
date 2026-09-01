@@ -272,10 +272,12 @@ def register_user(user: UserRegister, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Phone number already registered")
         
     hashed = hash_password(user.password)
+    clean_email = user.email.strip() if (user.email and user.email.strip()) else None
+    
     db_user = UserDB(
         phone_number=user.phone_number,
         full_name=user.full_name,
-        email=user.email,
+        email=clean_email,
         password_hash=hashed
     )
     db.add(db_user)
@@ -289,16 +291,21 @@ def register_user(user: UserRegister, db: Session = Depends(get_db)):
     }
 
 @app.post("/auth/verify-otp")
-def verify_otp(otp_data: OTPVerification):
+def verify_otp(otp_data: OTPVerification, db: Session = Depends(get_db)):
     stored_otp = mock_otp_db.get(otp_data.phone_number)
     if not stored_otp or stored_otp != otp_data.otp_code:
         raise HTTPException(status_code=400, detail="Invalid OTP or phone number")
     
     mock_otp_db.pop(otp_data.phone_number, None)
+    user = db.query(UserDB).filter(UserDB.phone_number == otp_data.phone_number).first()
+    user_id = user.id if user else 1
+    
     access_token = create_access_token(data={"sub": otp_data.phone_number})
     return {
         "access_token": access_token,
         "token_type": "bearer",
+        "user_id": user_id,
+        "phone_number": otp_data.phone_number,
         "message": "OTP verification successful."
     }
 
@@ -309,11 +316,17 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
         # Allow default mock login for convenience
         if credentials.phone_number == "+1234567890" and credentials.password == "password123":
             access_token = create_access_token(data={"sub": credentials.phone_number})
-            return {"access_token": access_token, "token_type": "bearer"}
+            return {"access_token": access_token, "token_type": "bearer", "user_id": 1}
         raise HTTPException(status_code=401, detail="Incorrect credentials")
     
     access_token = create_access_token(data={"sub": user.phone_number})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "phone_number": user.phone_number,
+        "full_name": user.full_name
+    }
 
 # --- USER MODULE ---
 @app.get("/users/profile/{phone_number}")
@@ -322,12 +335,14 @@ def get_user_profile(phone_number: str, db: Session = Depends(get_db)):
     if not user:
         if phone_number == "+1234567890":
             return {
+                "user_id": 1,
                 "phone_number": "+1234567890", "full_name": "Jane Doe",
                 "email": "jane@aegis.com", "blood_group": "O+",
                 "medical_conditions": "None", "allergies": "Penicillin"
             }
         raise HTTPException(status_code=404, detail="User not found")
     return {
+        "user_id": user.id,
         "phone_number": user.phone_number, "full_name": user.full_name,
         "email": user.email, "blood_group": user.blood_group,
         "medical_conditions": user.medical_conditions, "allergies": user.allergies
@@ -446,8 +461,11 @@ def activate_sos(payload: SOSActivateRequest, db: Session = Depends(get_db)):
     if not contacts:
         contacts = db.query(EmergencyContactDB).all()
         
+    user = db.query(UserDB).filter(UserDB.id == payload.user_id).first()
+    user_name = user.full_name if (user and user.full_name) else "Aegis User"
+    
     sms_body = (
-        f"🚨 Aegis Emergency SOS! Jane Doe needs help.\n"
+        f"🚨 Aegis Emergency SOS! {user_name} needs immediate help.\n"
         f"Live tracking: https://www.google.com/maps?q={payload.latitude},{payload.longitude}"
     )
     
@@ -650,15 +668,23 @@ def analyze_behavior(payload: TelemetryPayload):
     force_magnitude = math.sqrt(payload.accelerometer_x**2 + payload.accelerometer_y**2 + payload.accelerometer_z**2)
     status_label = "NORMAL_WALKING"
     alert_triggered = False
+    details_msg = "Steady walking kinematics within safety thresholds."
     
     if force_magnitude > 25.0:
         status_label = "FALL_DETECTED"
         alert_triggered = True
+        details_msg = f"High impact force detected ({round(force_magnitude, 1)}G) - Fall suspected. Auto-SOS armed."
     elif payload.speed_mps > 4.5:
         status_label = "RUNNING_DETECTED"
         alert_triggered = True
+        details_msg = f"Rapid acceleration detected ({round(payload.speed_mps, 1)} m/s) - Emergency gait pattern."
         
-    return {"status": status_label, "anomaly_detected": alert_triggered, "g_force_magnitude": round(force_magnitude, 2)}
+    return {
+        "status": status_label,
+        "anomaly_detected": alert_triggered,
+        "g_force_magnitude": round(force_magnitude, 2),
+        "details": details_msg
+    }
 
 @app.post("/ai/voice-recognition")
 def parse_voice_phrases(payload: VoicePayload):

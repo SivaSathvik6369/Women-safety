@@ -1,5 +1,7 @@
 // Configuration
-const BACKEND_URL = "https://women-safety-n4b9.onrender.com";
+const BACKEND_URL = (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"))
+    ? "http://localhost:8000"
+    : "https://women-safety-n4b9.onrender.com";
 const p1 = "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NndycTAwMHQyeXN5NTc5";
 const p2 = "d25ndjIifQ.6SpP3jsIr5RxwW7nU5ipGA";
 const DEFAULT_MAPBOX_KEY = p1 + p2;
@@ -7,6 +9,7 @@ const DEFAULT_MAPBOX_KEY = p1 + p2;
 // Global variables
 let activeIncidentId = null;
 let currentPhone = null;
+let currentUserId = null;
 let authToken = null;
 let watchId = null;
 let userMarker = null;
@@ -30,10 +33,12 @@ window.onload = function() {
 function checkActiveSession() {
     const token = localStorage.getItem("aegis_token");
     const phone = localStorage.getItem("aegis_phone");
+    const uid = localStorage.getItem("aegis_user_id");
     
     if (token && phone) {
         authToken = token;
         currentPhone = phone;
+        currentUserId = uid ? parseInt(uid) : 1;
         loadProfileAndStart();
     } else {
         showAuthScreen("register");
@@ -160,8 +165,10 @@ async function handleRegister() {
                     const otpData = await otpRes.json();
                     authToken = otpData.access_token;
                     currentPhone = phone;
+                    currentUserId = otpData.user_id || 1;
                     localStorage.setItem("aegis_token", authToken);
                     localStorage.setItem("aegis_phone", phone);
+                    localStorage.setItem("aegis_user_id", currentUserId);
                     
                     alert("Account verified successfully! Welcome to Aegis.");
                     showAuthScreen("setup");
@@ -203,9 +210,11 @@ async function handleLogin() {
             const data = await response.json();
             authToken = data.access_token;
             currentPhone = phone;
+            currentUserId = data.user_id || 1;
             
             localStorage.setItem("aegis_token", authToken);
             localStorage.setItem("aegis_phone", phone);
+            localStorage.setItem("aegis_user_id", currentUserId);
             
             await checkProfileSetup();
         } else {
@@ -215,8 +224,10 @@ async function handleLogin() {
         // Mock fallback
         authToken = "mock_jwt_token_123";
         currentPhone = phone;
+        currentUserId = 1;
         localStorage.setItem("aegis_token", authToken);
         localStorage.setItem("aegis_phone", phone);
+        localStorage.setItem("aegis_user_id", "1");
         showAuthScreen("setup");
     }
 }
@@ -301,6 +312,10 @@ function loadProfileAndStart() {
             return res.json();
         })
         .then(data => {
+            if (data.user_id) {
+                currentUserId = data.user_id;
+                localStorage.setItem("aegis_user_id", currentUserId);
+            }
             document.getElementById("user-greeting-name").innerText = `Welcome Back, ${data.full_name || "User"}`;
             document.getElementById("blood-group").value = data.blood_group || "O+";
             document.getElementById("medical-conditions").value = data.medical_conditions || "None";
@@ -375,6 +390,7 @@ function handleLogout() {
     localStorage.clear();
     authToken = null;
     currentPhone = null;
+    currentUserId = null;
     showAuthScreen("login");
 }
 
@@ -441,7 +457,7 @@ async function sendLiveTelemetryToBackend(lat, lng) {
                 "Authorization": `Bearer ${authToken}`
             },
             body: JSON.stringify({
-                user_id: 1,
+                user_id: currentUserId || 1,
                 latitude: lat,
                 longitude: lng
             })
@@ -712,7 +728,7 @@ async function triggerSOS() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${authToken}`
             },
-            body: JSON.stringify({ user_id: 1, latitude: lat, longitude: lng })
+            body: JSON.stringify({ user_id: currentUserId || 1, latitude: lat, longitude: lng })
         });
 
         if (response.ok) {
@@ -830,7 +846,7 @@ async function updateTelemetry() {
                 "Authorization": `Bearer ${authToken}`
             },
             body: JSON.stringify({
-                user_id: 1,
+                user_id: currentUserId || 1,
                 accelerometer_x: ax,
                 accelerometer_y: ay,
                 accelerometer_z: az,
@@ -942,8 +958,6 @@ async function saveProfile() {
                 "Authorization": `Bearer ${authToken}`
             },
             body: JSON.stringify({
-                full_name: "Jane Doe",
-                email: "jane.doe@example.com",
                 medical_info: {
                     blood_group: bg,
                     medical_conditions: med,

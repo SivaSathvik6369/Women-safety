@@ -214,12 +214,32 @@
                     
                     <div class="form-row">
                         <div class="input-group">
-                            <input type="text" id="origin" placeholder="From Location" value="My Current Location">
+                            <input type="text" id="origin" placeholder="From Location" value="My Current Location" list="india-places-list">
                             <button class="icon-btn" onclick="setToCurrentLocation()" type="button" title="Use Current Location">📍</button>
                         </div>
-                        <input type="text" id="destination" placeholder="To Location (e.g. Mumbai, Saket, Delhi)" value="">
+                        <input type="text" id="destination" placeholder="To: Any Location / Landmark (e.g. Vijayawada, Guntur, Mangalagiri, Hyderabad, Delhi)" value="" list="india-places-list">
                         <button class="primary-btn" onclick="fetchSafeRoutes()">Find Safest Path</button>
                     </div>
+
+                    <datalist id="india-places-list">
+                        <option value="Vijayawada, Andhra Pradesh">
+                        <option value="Benz Circle, Vijayawada">
+                        <option value="PVP Square Mall, Vijayawada">
+                        <option value="Guntur Bus Stand, Guntur">
+                        <option value="Mangalagiri, Andhra Pradesh">
+                        <option value="Amaravati Secretariat, Velagapudi">
+                        <option value="Tullur, Amaravati">
+                        <option value="KL University, Vaddeswaram">
+                        <option value="Kanaka Durga Temple, Vijayawada">
+                        <option value="Hitec City, Hyderabad">
+                        <option value="Charminar, Hyderabad">
+                        <option value="Connaught Place, New Delhi">
+                        <option value="India Gate, New Delhi">
+                        <option value="Saket, New Delhi">
+                        <option value="Bandra, Mumbai">
+                        <option value="Marina Beach, Chennai">
+                        <option value="MG Road, Bangalore">
+                    </datalist>
 
                     <!-- Leaflet Maps Container -->
                     <div id="map" class="map-view-box"></div>

@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import math
+import urllib.request
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, UploadFile, File, Form
@@ -539,6 +541,42 @@ def update_gps_location(update: GPSUpdate):
         "geofence_violation": violation_trigger,
         "coordinates": {"lat": update.latitude, "lng": update.longitude}
     }
+
+@app.get("/gps/geocode")
+def geocode_place(query: str):
+    q = query.strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="Query parameter required")
+        
+    # Check Indian Places Dictionary
+    for place, coords in INDIAN_PLACES.items():
+        if place in q.lower():
+            return {"lat": coords[0], "lng": coords[1], "name": place.title()}
+
+    # Try Nominatim India
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(q)}&countrycodes=in&format=json&limit=1"
+        req = urllib.request.Request(url, headers={'User-Agent': 'AegisWomenSafetyApp/2.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if data and len(data) > 0:
+                return {"lat": float(data[0]["lat"]), "lng": float(data[0]["lon"]), "name": data[0].get("display_name", q)}
+    except Exception:
+        pass
+
+    # Try Photon
+    try:
+        url = f"https://photon.komoot.io/api/?q={urllib.parse.quote(q)}&limit=1"
+        req = urllib.request.Request(url, headers={'User-Agent': 'AegisWomenSafetyApp/2.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if data.get("features"):
+                c = data["features"][0]["geometry"]["coordinates"]
+                return {"lat": float(c[1]), "lng": float(c[0]), "name": data["features"][0]["properties"].get("name", q)}
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=404, detail=f"Location '{query}' could not be resolved.")
 
 @app.post("/gps/safe-route")
 def get_safe_route(query: RouteQuery):

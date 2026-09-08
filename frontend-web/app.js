@@ -592,42 +592,89 @@ function initMap() {
     });
 }
 
-// Helper Geocoder: Tries Mapbox API first. Falls back to OpenStreetMap Nominatim API (free, no key).
+// Multi-Engine Global Geocoder: Resolves any address, shop, mall, colony, hospital, or city in Google Maps / India
 async function geocodePlace(placeName, activeKey) {
+    if (!placeName || !placeName.trim()) return null;
+    const cleanName = placeName.trim();
+    
+    // Check if raw coordinates "lat, lng" was provided
+    if (cleanName.includes(",") && !isNaN(parseFloat(cleanName.split(",")[0])) && !isNaN(parseFloat(cleanName.split(",")[1]))) {
+        const parts = cleanName.split(",");
+        return { lat: parseFloat(parts[0].trim()), lng: parseFloat(parts[1].trim()) };
+    }
+
+    const userLat = currentLat || 16.5131;
+    const userLng = currentLng || 80.5165;
+
+    // 1. Try Mapbox Geocoding with Proximity Bias
     if (activeKey) {
         try {
-            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(placeName)}.json?access_token=${activeKey}&country=in&limit=1`;
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${activeKey}&country=in&proximity=${userLng},${userLat}&limit=1`;
             const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 if (data.features && data.features.length > 0) {
                     const [lng, lat] = data.features[0].center;
-                    return { lat, lng };
+                    return { lat, lng, name: data.features[0].place_name };
                 }
             }
         } catch (e) {
-            console.warn("Mapbox geocoding failed, falling back to Nominatim:", e);
+            console.warn("Mapbox geocoding error:", e);
         }
     }
-    
-    // Fallback Geocoding via Nominatim (OpenStreetMap)
+
+    // 2. Try Nominatim India Geocoder
     try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(placeName)}&countrycodes=in&format=json&limit=1`;
-        const res = await fetch(url, {
-            headers: {
-                "User-Agent": "AegisWomenSafetyApp/1.0"
-            }
-        });
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanName)}&countrycodes=in&format=json&limit=1`;
+        const res = await fetch(url, { headers: { "User-Agent": "AegisWomenSafetyApp/2.0" } });
         if (res.ok) {
             const data = await res.json();
             if (data && data.length > 0) {
-                return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), name: data[0].display_name };
             }
         }
     } catch (e) {
-        console.error("Nominatim geocoding fallback failed:", e);
+        console.warn("Nominatim India error:", e);
     }
-    
+
+    // 3. Try Photon Global POI Geocoder with Proximity Bias
+    try {
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanName)}&lat=${userLat}&lon=${userLng}&limit=1`;
+        const res = await fetch(url);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.features && data.features.length > 0) {
+                const [lng, lat] = data.features[0].geometry.coordinates;
+                return { lat, lng, name: data.features[0].properties.name || cleanName };
+            }
+        }
+    } catch (e) {
+        console.warn("Photon error:", e);
+    }
+
+    // 4. Try Backend Geocode Endpoint
+    try {
+        const res = await fetch(`${BACKEND_URL}/gps/geocode?query=${encodeURIComponent(cleanName)}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.lat && data.lng) {
+                return { lat: data.lat, lng: data.lng, name: data.name };
+            }
+        }
+    } catch (e) {}
+
+    // 5. Try Worldwide Nominatim (Without country restrictions)
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanName)}&format=json&limit=1`;
+        const res = await fetch(url, { headers: { "User-Agent": "AegisWomenSafetyApp/2.0" } });
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0) {
+                return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), name: data[0].display_name };
+            }
+        }
+    } catch (e) {}
+
     return null;
 }
 

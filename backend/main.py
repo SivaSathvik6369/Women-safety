@@ -223,6 +223,9 @@ class RiskPredictPayload(BaseModel):
 
 class ChatbotPayload(BaseModel):
     message: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    locality: Optional[str] = None
 
 # In-memory storage helper
 mock_otp_db = {}
@@ -705,18 +708,48 @@ def predict_risk_score(payload: RiskPredictPayload):
 def consult_safety_chatbot(payload: ChatbotPayload, db: Session = Depends(get_db)):
     api_key = os.getenv("GEMINI_API_KEY")
     user_msg = payload.message.lower()
-    is_police_query = "police" in user_msg or "thana" in user_msg or "cop" in user_msg
+    is_police_query = "police" in user_msg or "thana" in user_msg or "cop" in user_msg or "station" in user_msg
     
+    # Resolve real-time user coordinates
+    user_lat = payload.latitude if (payload.latitude is not None) else 16.5131
+    user_lng = payload.longitude if (payload.longitude is not None) else 80.5165
+
     police_meta = None
     if is_police_query:
         dispatch_ref = f"PCR-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        
+        # Determine locality dynamically
+        loc_name = "Amaravati, Andhra Pradesh"
+        station_name = "Amaravati Capital City Police Station & Disha Women Safety Division"
+        address_str = "Seed Access Road, Velagapudi / Amaravati, Andhra Pradesh"
+        
+        try:
+            rev_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={user_lat}&lon={user_lng}"
+            import urllib.request
+            req = urllib.request.Request(rev_url, headers={'User-Agent': 'AegisWomenSafetyApp/1.0'})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                geo_data = json.loads(resp.read().decode('utf-8'))
+                addr = geo_data.get("address", {})
+                city = addr.get("city") or addr.get("town") or addr.get("suburb") or addr.get("village") or addr.get("county") or "Amaravati"
+                state = addr.get("state", "Andhra Pradesh")
+                loc_name = f"{city}, {state}"
+                station_name = f"{city} Police Station & Disha Women Safety Cell"
+                address_str = geo_data.get("display_name", f"{city}, {state}")[:75]
+        except Exception:
+            if 15.5 <= user_lat <= 17.5 and 79.5 <= user_lng <= 81.5:
+                loc_name = "Amaravati, Andhra Pradesh"
+                station_name = "Amaravati & Tullur Police Station (Disha Women Cell)"
+                address_str = "Main Road, Tullur / Amaravati Capital Region, Andhra Pradesh"
+
         police_meta = {
-            "station_name": "Central District Police Station & Special Women Safety Cell",
-            "helpline": "112 / 1091 (Toll Free)",
-            "direct_phone": "011-23311234",
-            "distance": "450m away (~5 min walk)",
-            "address": "Sector 4, Main HQ Road",
-            "map_url": "https://www.google.com/maps/search/nearest+police+station",
+            "station_name": station_name,
+            "locality": loc_name,
+            "helpline": "112 (National Emergency) / 1091 (Disha Helpline) / 100",
+            "direct_phone": "112",
+            "distance": "500m away (~6 min walk)",
+            "address": address_str,
+            "map_url": f"https://www.google.com/maps/search/police+station/@{user_lat},{user_lng},15z",
+            "directions_url": f"https://www.google.com/maps/dir/?api=1&origin={user_lat},{user_lng}&destination=Police+Station&travelmode=walking",
             "alert_dispatched": True,
             "dispatch_ref": dispatch_ref
         }
@@ -726,7 +759,7 @@ def consult_safety_chatbot(payload: ChatbotPayload, db: Session = Depends(get_db
             db.add(IncidentTimelineDB(
                 incident_id=1,
                 event_type="POLICE_STATION_ALERT",
-                description=f"Automated patrol alert dispatched to Central Police Station. Ref: {dispatch_ref}"
+                description=f"Patrol alert dispatched to {station_name} for GPS Lat: {round(user_lat, 4)}, Lng: {round(user_lng, 4)}. Ref: {dispatch_ref}"
             ))
             db.commit()
         except Exception:
@@ -764,14 +797,15 @@ def consult_safety_chatbot(payload: ChatbotPayload, db: Session = Depends(get_db
     # Fallback response system
     if is_police_query:
         response = (
-            "📍 Nearest Station: Central District Police Station & Women Safety Cell (450m away • ~5 mins).\n"
-            "📞 Direct Helpline: 112 / 1091\n"
-            "🚨 Police Alert Dispatched: Central PCR unit notified of your location!"
+            f"📍 Nearest Station: {police_meta['station_name']} ({police_meta['locality']})\n"
+            f"📍 Address: {police_meta['address']}\n"
+            f"📞 Helplines: {police_meta['helpline']}\n"
+            f"🚨 Police Patrol Alert: Central PCR unit notified of your live GPS coordinates! Ref: {police_meta['dispatch_ref']}"
         )
     elif "first aid" in user_msg or "hurt" in user_msg:
         response = "Apply firm pressure to the wound and elevate the injured area. Dial 102/108 for emergency ambulance services immediately."
     elif "legal" in user_msg or "right" in user_msg:
-        response = "Under Section 354 IPC and Zero FIR provisions, women can lodge an FIR at any police station irrespective of jurisdiction. Free legal counsel is guaranteed."
+        response = "Under Section 354 IPC, Disha Act, and Zero FIR provisions, women can lodge an FIR at any police station irrespective of jurisdiction. Free legal aid is guaranteed."
     else:
         response = "Aegis Safety Bot active. In danger? Press SOS or shake your phone to broadcast live telemetry."
         

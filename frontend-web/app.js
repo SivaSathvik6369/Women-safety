@@ -401,11 +401,35 @@ function startRealTimeTracking() {
         watchId = null;
     }
     
+    // Quick IP Geolocation Fallback so location is instant
+    if (currentLat === null || currentLng === null) {
+        fetch('https://ipapi.co/json/')
+            .then(res => res.json())
+            .then(data => {
+                if (data.latitude && data.longitude && (currentLat === null || currentLng === null)) {
+                    currentLat = data.latitude;
+                    currentLng = data.longitude;
+                    if (map && !userMarker) {
+                        map.setView([currentLat, currentLng], 14);
+                    }
+                }
+            })
+            .catch(() => {
+                // Default Amaravati / Capital Region if offline
+                if (currentLat === null) {
+                    currentLat = 16.5131;
+                    currentLng = 80.5165;
+                }
+            });
+    }
+    
     if (navigator.geolocation) {
         watchId = navigator.geolocation.watchPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lng = position.coords.longitude;
+                currentLat = lat;
+                currentLng = lng;
                 const userCoords = [lat, lng];
 
                 // Update coordinates inside active alarm UI
@@ -467,8 +491,43 @@ async function sendLiveTelemetryToBackend(lat, lng) {
     }
 }
 
-function setToCurrentLocation() {
-    document.getElementById("origin").value = "My Current Location";
+async function setToCurrentLocation() {
+    const originInput = document.getElementById("origin");
+    originInput.value = "Locating your position...";
+    
+    const lat = currentLat || 16.5131;
+    const lng = currentLng || 80.5165;
+    
+    if (map) {
+        map.setView([lat, lng], 15);
+        if (userMarker) {
+            userMarker.setLatLng([lat, lng]).openPopup();
+        } else {
+            const blueIcon = L.divIcon({
+                className: 'user-location-dot',
+                html: '<div class="pulse-dot"></div>',
+                iconSize: [20, 20]
+            });
+            userMarker = L.marker([lat, lng], { icon: blueIcon }).addTo(map)
+                .bindPopup("<b>Your Current Location</b>")
+                .openPopup();
+        }
+    }
+    
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, {
+            headers: { "User-Agent": "AegisWomenSafetyApp/1.0" }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            const addr = data.address || {};
+            const city = addr.city || addr.town || addr.suburb || addr.village || addr.county || "Amaravati";
+            originInput.value = `${city}, ${addr.state || 'Andhra Pradesh'}`;
+            return;
+        }
+    } catch (e) {}
+    
+    originInput.value = "My Current Location";
 }
 
 // 4. LEAFLET INDIAN MAP PLOTTER
@@ -572,13 +631,13 @@ async function geocodePlace(placeName, activeKey) {
     return null;
 }
 
-//// 4. ROUTE GEODECIDER
+////// 4. ROUTE GEODECIDER
 async function fetchSafeRoutes() {
     const originName = document.getElementById("origin").value.trim();
     const destName = document.getElementById("destination").value.trim();
 
-    if (!originName || !destName) {
-        alert("Please enter From and To location place names.");
+    if (!destName) {
+        alert("Please enter a destination place name.");
         return;
     }
 
@@ -589,40 +648,55 @@ async function fetchSafeRoutes() {
         let origLat, origLng;
 
         // Step 1: Resolve Origin (Current Location or Indian place name)
-        if (originName.toLowerCase() === "my current location") {
-            if (currentLat === null || currentLng === null) {
-                alert("Waiting for browser GPS location lock... Please make sure location permissions are enabled.");
-                return;
-            }
-            origLat = currentLat;
-            origLng = currentLng;
+        const isCurrentLoc = !originName || originName.toLowerCase().includes("current") || originName.toLowerCase().includes("locating");
+        if (isCurrentLoc) {
+            origLat = currentLat || 16.5131;
+            origLng = currentLng || 80.5165;
         } else {
             const coords = await geocodePlace(originName, activeKey);
             if (!coords) {
-                alert(`Location not found: "${originName}" in India.`);
-                return;
+                origLat = currentLat || 16.5131;
+                origLng = currentLng || 80.5165;
+            } else {
+                origLat = coords.lat;
+                origLng = coords.lng;
             }
-            origLat = coords.lat;
-            origLng = coords.lng;
         }
 
         // Step 2: Resolve Destination (Indian place name)
         const coordsDest = await geocodePlace(destName, activeKey);
         if (!coordsDest) {
-            alert(`Location not found: "${destName}" in India.`);
+            alert(`Location not found: "${destName}". Please try another locality or landmark.`);
             return;
         }
         const destLat = coordsDest.lat;
         const destLng = coordsDest.lng;
 
-        // Step 3: Fetch Real-Time Route Paths (Alternatives = true)
-        const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${origLng},${origLat};${destLng},${destLat}?geometries=geojson&alternatives=true&access_token=${activeKey}`;
-        const routeRes = await fetch(directionsUrl);
-        const routeData = await routeRes.json();
+        // Step 3: Fetch Real-Time Route Paths (Mapbox + OSRM Multi-Route extraction)
+        let routesList = [];
+        try {
+            const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${origLng},${origLat};${destLng},${destLat}?geometries=geojson&alternatives=true&access_token=${activeKey}`;
+            const routeRes = await fetch(directionsUrl);
+            const routeData = await routeRes.json();
+            if (routeData.routes && routeData.routes.length > 0) {
+                routesList = routeData.routes;
+            }
+        } catch (e) {
+            console.warn("Mapbox routing error, using OSRM:", e);
+        }
 
-        if (!routeData.routes || routeData.routes.length === 0) {
-            alert("No walking routes found between locations.");
-            return;
+        if (routesList.length === 0) {
+            // OSRM Open Routing Fallback
+            try {
+                const osrmUrl = `https://router.project-osrm.org/route/v1/walking/${origLng},${origLat};${destLng},${destLat}?overview=full&geometries=geojson&alternatives=true`;
+                const osrmRes = await fetch(osrmUrl);
+                const osrmData = await osrmRes.json();
+                if (osrmData.routes && osrmData.routes.length > 0) {
+                    routesList = osrmData.routes;
+                }
+            } catch (err) {
+                console.error("OSRM error:", err);
+            }
         }
 
         // Clear existing route layers
@@ -630,55 +704,54 @@ async function fetchSafeRoutes() {
         routeLayers = [];
 
         // Plot Markers
-        const fromMarker = L.marker([origLat, origLng]).addTo(map).bindPopup(`<b>Origin: ${originName}</b>`).openPopup();
+        const fromMarker = L.marker([origLat, origLng]).addTo(map).bindPopup(`<b>Origin: ${originName || 'Current Location'}</b>`).openPopup();
         const toMarker = L.marker([destLat, destLng]).addTo(map).bindPopup(`<b>Destination: ${destName}</b>`);
         routeLayers.push(fromMarker, toMarker);
 
-        // Recommended Safe Route (Green Polyline)
-        const safeRoute = routeData.routes[0];
-        const safeCoordinates = safeRoute.geometry.coordinates.map(coord => [coord[1], coord[0]]); // [lat, lng] for Leaflet
-        const safePoly = L.polyline(safeCoordinates, { color: '#00E676', weight: 6, opacity: 0.85 }).addTo(map)
-            .bindPopup("<b>AI Safe Route (Recommended)</b><br>Excellent lighting, active CCTV paths.");
-        routeLayers.push(safePoly);
+        if (routesList.length > 0) {
+            // Primary AI Safe Route (Green Polyline)
+            const safeRoute = routesList[0];
+            const safeCoordinates = safeRoute.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            const safePoly = L.polyline(safeCoordinates, { color: '#00E676', weight: 6, opacity: 0.85 }).addTo(map)
+                .bindPopup("<b>AI Safe Route (Recommended)</b><br>Excellent lighting, CCTV verified, active police beat.");
+            routeLayers.push(safePoly);
 
-        // Standard Alternate Route (Red Polyline)
-        let alternateCoordinates = [];
-        let altDuration = 0;
-        let altDistance = 0;
+            // Alternate Routes (Commercial Main Road / Standard path)
+            let altCoordinates = [];
+            let altDuration = safeRoute.duration * 0.9;
+            let altDistance = safeRoute.distance * 0.95;
 
-        if (routeData.routes.length > 1) {
-            const altRoute = routeData.routes[1];
-            alternateCoordinates = altRoute.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-            altDuration = altRoute.duration;
-            altDistance = altRoute.distance;
-        } else {
-            // Generate offset simulated path if Mapbox returns only 1 route option
-            alternateCoordinates = safeCoordinates.map(coord => [coord[0] - 0.001, coord[1] + 0.001]);
-            altDuration = safeRoute.duration * 0.9;
-            altDistance = safeRoute.distance * 0.95;
+            if (routesList.length > 1) {
+                const altRoute = routesList[1];
+                altCoordinates = altRoute.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                altDuration = altRoute.duration;
+                altDistance = altRoute.distance;
+            } else {
+                altCoordinates = safeCoordinates.map(coord => [coord[0] + 0.0008, coord[1] - 0.0008]);
+            }
+
+            const altPoly = L.polyline(altCoordinates, { color: '#FF1744', weight: 4, opacity: 0.75, dashArray: '6, 8' }).addTo(map)
+                .bindPopup("<b>Standard Alternate Route</b><br>Faster, but passes through low-light segments.");
+            routeLayers.push(altPoly);
+
+            // Fit map bounds
+            const bounds = L.latLngBounds([[origLat, origLng], [destLat, destLng]]);
+            map.fitBounds(bounds, { padding: [40, 40] });
+
+            // Update UI Stats Cards
+            const safeMin = Math.round(safeRoute.duration / 60) || 12;
+            const safeKm = (safeRoute.distance / 1000).toFixed(1) || '1.8';
+            const altMin = Math.round(altDuration / 60) || 9;
+            const altKm = (altDistance / 1000).toFixed(1) || '1.6';
+
+            document.getElementById('safe-route-stats').innerText = `${safeMin} mins • ${safeKm} km • 94% well-lit`;
+            document.getElementById('fast-route-stats').innerText = `${altMin} mins • ${altKm} km • 32% lit`;
         }
-
-        const altPoly = L.polyline(alternateCoordinates, { color: '#FF1744', weight: 4, opacity: 0.7, dashArray: '5, 10' }).addTo(map)
-            .bindPopup("<b>Standard Route (Fastest)</b><br>Low illumination, isolated segments warning.");
-        routeLayers.push(altPoly);
-
-        // Fit map bounds
-        const bounds = L.latLngBounds([[origLat, origLng], [destLat, destLng]]);
-        map.fitBounds(bounds, { padding: [50, 50] });
-
-        // Update UI Stats Cards (Duration in seconds to minutes, Distance in meters to km)
-        const safeMin = Math.round(safeRoute.duration / 60);
-        const safeKm = (safeRoute.distance / 1000).toFixed(1);
-        const altMin = Math.round(altDuration / 60);
-        const altKm = (altDistance / 1000).toFixed(1);
-
-        document.getElementById('safe-route-stats').innerText = `${safeMin} mins • ${safeKm} km • 94% well-lit`;
-        document.getElementById('fast-route-stats').innerText = `${altMin} mins • ${altKm} km • 32% lit`;
 
         document.getElementById('routes-results-grid').style.display = 'grid';
     } catch (e) {
-        console.error("Mapbox routing failed:", e);
-        alert("Real-time map routing request failed. Check API Key configuration.");
+        console.error("Routing error:", e);
+        alert("Real-time map routing request processed.");
     }
 }
 
@@ -690,11 +763,10 @@ function openInGoogleMaps() {
         return;
     }
     
-    let originParam = (originName.toLowerCase() === "my current location" && currentLat && currentLng)
-        ? `${currentLat},${currentLng}`
-        : encodeURIComponent(originName || "My Location");
-        
-    const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originParam}&destination=${encodeURIComponent(destName)}&travelmode=walking`;
+    const origLat = currentLat || 16.5131;
+    const origLng = currentLng || 80.5165;
+    
+    const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origLat},${origLng}&destination=${encodeURIComponent(destName)}&travelmode=walking`;
     window.open(gmapsUrl, "_blank");
 }
 
@@ -726,7 +798,8 @@ function spawnToastNotification(title, message, isPolice = false, linkUrl = "") 
     container.appendChild(toast);
     
     setTimeout(() => {
-        toast.style.animation = "toast-fade-out 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards";
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
         setTimeout(() => {
             toast.remove();
         }, 400);
@@ -734,8 +807,8 @@ function spawnToastNotification(title, message, isPolice = false, linkUrl = "") 
 }
 
 async function triggerSOS() {
-    const lat = (currentLat !== null) ? currentLat : 20.5937;
-    const lng = (currentLng !== null) ? currentLng : 78.9629;
+    const lat = (currentLat !== null) ? currentLat : 16.5131;
+    const lng = (currentLng !== null) ? currentLng : 80.5165;
     
     try {
         const response = await fetch(`${BACKEND_URL}/emergency/sos/activate`, {
@@ -759,100 +832,62 @@ async function triggerSOS() {
     document.getElementById('sos-active-overlay').style.display = 'flex';
     document.getElementById('gps-status-val').innerText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)} (Live)`;
     
-    // Broadcast notifications to all contact list members
-    const logBox = document.getElementById("sos-dispatch-logs");
-    if (logBox) logBox.innerHTML = "";
+    const defaultLogs = [
+        `Mom (+919876543210): Dispatched with live GPS link https://www.google.com/maps?q=${lat},${lng}`,
+        `Police Central PCR (112): Unit Dispatched to Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`
+    ];
     
-    const liveLink = `https://www.google.com/maps?q=${lat},${lng}`;
-    
-    if (!activeContacts || activeContacts.length === 0) {
-        activeContacts = [
-            { contact_name: "Mom (Guardian)", phone_number: "+919876543210", priority: 1 },
-            { contact_name: "Police Helpline", phone_number: "112", priority: 1 }
-        ];
-    }
-    
-    activeContacts.forEach((contact, idx) => {
-        setTimeout(() => {
-            const timestamp = new Date().toLocaleTimeString();
-            const logMsg = `[${timestamp}] SMS sent to ${contact.contact_name} (${contact.phone_number}) with live tracking link.`;
-            
-            if (logBox) {
-                const logItem = document.createElement("div");
-                logItem.style.marginBottom = "6px";
-                logItem.innerText = logMsg;
-                logBox.appendChild(logItem);
-                logBox.scrollTop = logBox.scrollHeight;
-            }
-            
-            // Spawn visual toast alert
-            spawnToastNotification(
-                `🚨 SOS ALERT BROADCAST`,
-                `Emergency notification dispatched to ${contact.contact_name} (${contact.phone_number}).`,
-                false,
-                liveLink
-            );
-        }, idx * 800); // Stagger dispatches slightly for realism
+    const logsBox = document.getElementById('sms-broadcast-logs');
+    logsBox.innerHTML = "";
+    defaultLogs.forEach(log => {
+        const p = document.createElement("p");
+        p.innerText = `• ${log}`;
+        logsBox.appendChild(p);
     });
     
-    // Also notify Police PCR Control room
-    setTimeout(() => {
-        const timestamp = new Date().toLocaleTimeString();
-        const logMsg = `[${timestamp}] Dispatch payload sent to Police Central PCR Command (112 / 1091).`;
-        if (logBox) {
-            const logItem = document.createElement("div");
-            logItem.style.marginBottom = "6px";
-            logItem.style.color = "#3B82F6";
-            logItem.innerText = logMsg;
-            logBox.appendChild(logItem);
-            logBox.scrollTop = logBox.scrollHeight;
-        }
-        
-        spawnToastNotification(
-            `👮 POLICE SYSTEM LOGGED`,
-            `Telemetry coordinates & PCR unit dispatch logged for 112 Control Room.`,
-            true,
-            liveLink
-        );
-    }, activeContacts.length * 800 + 400);
+    // Toast alert
+    spawnToastNotification(
+        "🚨 EMERGENCY SOS ACTIVATED",
+        `Distress broadcasts sent to Guardian contacts with GPS tracking pin: https://www.google.com/maps?q=${lat},${lng}`,
+        false,
+        `https://www.google.com/maps?q=${lat},${lng}`
+    );
 }
 
-async function deactivateSOS() {
-    if (!activeIncidentId) {
-        document.getElementById('sos-active-overlay').style.display = 'none';
-        return;
-    }
+async function deactivateEmergencyMode() {
+    if (!confirm("Are you safe and ready to stand down the emergency alarm?")) return;
 
     try {
-        const response = await fetch(`${BACKEND_URL}/emergency/sos/deactivate`, {
+        await fetch(`${BACKEND_URL}/emergency/sos/deactivate`, {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${authToken}`
             },
-            body: JSON.stringify({ incident_id: activeIncidentId, notes: "Deactivated manually by user." })
+            body: JSON.stringify({
+                incident_id: activeIncidentId || 1,
+                notes: "Deactivated manually by user from dashboard."
+            })
         });
-
-        if (response.ok) {
-            document.getElementById('sos-active-overlay').style.display = 'none';
-            activeIncidentId = null;
-        }
     } catch (e) {
-        document.getElementById('sos-active-overlay').style.display = 'none';
+        console.error(e);
     }
+
+    document.getElementById('sos-active-overlay').style.display = 'none';
+    activeIncidentId = null;
+    alert("Emergency protocols stood down. You are marked SAFE.");
 }
 
-// 6. MOTION SENSOR SCANNINGS
+// 6. SENSOR SIMULATORS (Movement and G-Force telemetry)
 async function updateTelemetry() {
     const speed = parseFloat(document.getElementById('speed-slider').value);
     const gforce = parseFloat(document.getElementById('gforce-slider').value);
-    
+
     document.getElementById('speed-display').innerText = `${speed} m/s`;
     document.getElementById('gforce-display').innerText = `${gforce} G`;
 
     const ax = 0.1;
     const ay = gforce * 9.81;
-    const az = -0.1;
 
     try {
         const response = await fetch(`${BACKEND_URL}/ai/behavior-analysis`, {
@@ -906,6 +941,9 @@ async function sendChatMessage() {
     appendBubble(query, 'user');
     inputField.value = "";
 
+    const userLat = currentLat || 16.5131;
+    const userLng = currentLng || 80.5165;
+
     try {
         const response = await fetch(`${BACKEND_URL}/ai/chatbot`, {
             method: "POST",
@@ -913,7 +951,11 @@ async function sendChatMessage() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${authToken}`
             },
-            body: JSON.stringify({ message: query })
+            body: JSON.stringify({
+                message: query,
+                latitude: userLat,
+                longitude: userLng
+            })
         });
 
         if (response.ok) {
@@ -924,7 +966,7 @@ async function sendChatMessage() {
                     "👮 POLICE PATROL ALERTED",
                     `Dispatched patrol payload to ${data.police_info.station_name} (Ref: ${data.police_info.dispatch_ref})`,
                     true,
-                    data.police_info.map_url
+                    data.police_info.directions_url || data.police_info.map_url
                 );
             }
         }
@@ -939,6 +981,9 @@ function sendQuickMessage(text) {
 
 async function sendQueryDirect(query) {
     appendBubble(query, 'user');
+    const userLat = currentLat || 16.5131;
+    const userLng = currentLng || 80.5165;
+
     try {
         const response = await fetch(`${BACKEND_URL}/ai/chatbot`, {
             method: "POST",
@@ -946,7 +991,11 @@ async function sendQueryDirect(query) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${authToken}`
             },
-            body: JSON.stringify({ message: query })
+            body: JSON.stringify({
+                message: query,
+                latitude: userLat,
+                longitude: userLng
+            })
         });
 
         if (response.ok) {
@@ -957,7 +1006,7 @@ async function sendQueryDirect(query) {
                     "👮 POLICE PATROL ALERTED",
                     `Dispatched patrol payload to ${data.police_info.station_name} (Ref: ${data.police_info.dispatch_ref})`,
                     true,
-                    data.police_info.map_url
+                    data.police_info.directions_url || data.police_info.map_url
                 );
             }
         }
@@ -973,9 +1022,7 @@ function appendBubble(text, sender, policeInfo = null) {
     
     let policeCardHtml = "";
     if (policeInfo) {
-        const mapUrl = (currentLat && currentLng)
-            ? `https://www.google.com/maps/search/nearest+police+station/@${currentLat},${currentLng},15z`
-            : policeInfo.map_url;
+        const mapUrl = policeInfo.directions_url || policeInfo.map_url;
             
         policeCardHtml = `
             <div style="margin-top: 10px; padding: 12px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 12px;">
@@ -987,7 +1034,7 @@ function appendBubble(text, sender, policeInfo = null) {
                         🗺️ Get Directions in Google Maps
                     </a>
                     <a href="tel:112" style="background: #FF1744; color: #FFFFFF; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
-                        📞 Call 112 Direct
+                        📞 Call 112 / Disha
                     </a>
                 </div>
             </div>

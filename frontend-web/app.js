@@ -672,23 +672,24 @@ async function fetchSafeRoutes() {
         const destLat = coordsDest.lat;
         const destLng = coordsDest.lng;
 
-        // Step 3: Fetch Real-Time Route Paths (Mapbox + OSRM Multi-Route extraction)
+        // Step 3: Fetch Real-Time Route Paths (Driving & All Road Networks)
         let routesList = [];
         try {
-            const directionsUrl = `https://api.mapbox.com/directions/v5/mapbox/walking/${origLng},${origLat};${destLng},${destLat}?geometries=geojson&alternatives=true&access_token=${activeKey}`;
-            const routeRes = await fetch(directionsUrl);
+            // Query Driving / Multi-modal road networks first
+            const drivingUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${origLng},${origLat};${destLng},${destLat}?geometries=geojson&alternatives=true&access_token=${activeKey}`;
+            const routeRes = await fetch(drivingUrl);
             const routeData = await routeRes.json();
             if (routeData.routes && routeData.routes.length > 0) {
                 routesList = routeData.routes;
             }
         } catch (e) {
-            console.warn("Mapbox routing error, using OSRM:", e);
+            console.warn("Mapbox driving routing error, trying OSRM:", e);
         }
 
         if (routesList.length === 0) {
-            // OSRM Open Routing Fallback
+            // OSRM Driving & Road Network fallback
             try {
-                const osrmUrl = `https://router.project-osrm.org/route/v1/walking/${origLng},${origLat};${destLng},${destLat}?overview=full&geometries=geojson&alternatives=true`;
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origLng},${origLat};${destLng},${destLat}?overview=full&geometries=geojson&alternatives=true`;
                 const osrmRes = await fetch(osrmUrl);
                 const osrmData = await osrmRes.json();
                 if (osrmData.routes && osrmData.routes.length > 0) {
@@ -696,6 +697,27 @@ async function fetchSafeRoutes() {
                 }
             } catch (err) {
                 console.error("OSRM error:", err);
+            }
+        }
+
+        // If external routing engines fail, fetch from Backend safe-route endpoint
+        if (routesList.length === 0) {
+            try {
+                const backendRes = await fetch(`${BACKEND_URL}/gps/safe-route`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ origin_name: `${origLat},${origLng}`, destination_name: destName })
+                });
+                const bData = await backendRes.json();
+                if (bData.all_routes && bData.all_routes.length > 0) {
+                    routesList = bData.all_routes.map(r => ({
+                        duration: r.eta_minutes * 60,
+                        distance: r.distance_km * 1000,
+                        geometry: { coordinates: r.path.map(p => [p[1], p[0]]) }
+                    }));
+                }
+            } catch (err) {
+                console.error("Backend safe-route error:", err);
             }
         }
 

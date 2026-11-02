@@ -1,122 +1,229 @@
-# Smart Women Security Application (Aegis)
+# 🛡️ Aegis — Women Safety System
 
-An advanced emergency response and personal safety system using Artificial Intelligence (AI), IoT integration, Cloud Computing, and real-time communication. This system predicts unsafe situations, detects threats using behavioral patterns and sensor data, monitors routes, and coordinates immediate alerts to emergency contacts and law enforcement.
+> An AI-powered women safety application with real-time SOS alerts, safe route navigation, police station lookup, AI chatbot, and fake call generator — built for India.
 
-## System Architecture
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
+[![React Native](https://img.shields.io/badge/React%20Native-Expo-blueviolet.svg)](https://expo.dev)
 
-```mermaid
-graph TD
-    Client[React Native App] --> |APIs / WebSockets| Gateway[API Gateway / Service Router]
-    
-    Gateway --> AuthSvc[Authentication Service]
-    Gateway --> UserSvc[User Service]
-    Gateway --> EmergencySvc[Emergency & SOS Service]
-    Gateway --> GPSSvc[GPS & Route Service]
-    Gateway --> NotifSvc[Notification Service]
-    Gateway --> AISvc[AI & Threat Detection Service]
-    
-    AuthSvc --> Firebase[Firebase Auth]
-    UserSvc --> DB_Postgres[(PostgreSQL)]
-    EmergencySvc --> DB_Postgres
-    EmergencySvc --> Twilio[SMS/Call Gateway]
-    
-    GPSSvc --> DB_Mongo[(MongoDB)]
-    GPSSvc --> MapsAPI[Google Maps API]
-    
-    NotifSvc --> FCM[Firebase Cloud Messaging]
-    NotifSvc --> WebSockets[WebSocket Server]
-    
-    AISvc --> AIModels[AI/ML Inference Models]
-    AISvc --> DB_Mongo
-    
-    IoT[Wearable Devices / BLE Panic Button] --> |BLE / MQTT| Client
+---
+
+## 📸 Overview
+
+Aegis is a full-stack women safety system designed for real-world use across India. It combines:
+
+- **One-touch SOS** with multi-channel emergency alerts (SMS, call, WhatsApp)
+- **Safe Route Finder** — multi-modal navigation (walk, drive, transit) with safety scoring
+- **Nearest Police Station** lookup by live GPS with Google Maps directions
+- **AI Chatbot** for safety tips, legal rights, first-aid guidance
+- **Fake Call Generator** to escape unsafe situations
+- **Live Geocoding** for any Indian landmark, road, city or address
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│              React Native App (Expo)                │
+│  AuthScreen │ Dashboard │ SOS │ Map │ Chat │ Profile │
+└────────────────────────┬────────────────────────────┘
+                         │ HTTP REST API
+┌────────────────────────▼────────────────────────────┐
+│            FastAPI Backend (Python)                 │
+│  /sos  /safe-route  /geocode  /police-stations      │
+│  /chatbot  /fake-call  /auth  /profile              │
+└──────┬──────────────────┬────────────────┬──────────┘
+       │                  │                │
+  OpenStreetMap      Nominatim        Overpass API
+  OSRM Routing       Geocoding        POI Lookup
 ```
 
 ---
 
-## 20 Major Functional Modules
+## ✨ Key Features
 
-1. **User Registration & Authentication**: OTP mobile verification, Secure login (JWT & Bio-auth), Medical history (Blood group, allergies, conditions).
-2. **Emergency Contact Management**: Priority-based contacts, family groups, direct hotlines (Police: 112, Women Helpline: 1091).
-3. **Smart SOS Module**: Multi-trigger execution (one-touch, shake phone, voice trigger, power button tap, BLE wearable button).
-4. **Live GPS Tracking**: Real-time telemetry, location sharing to trusted circle, geofencing safety boundaries.
-5. **AI Threat Detection**: Anomaly movement detector (running, sudden stops, fall-down triggers) and night-monitoring safety alerts.
-6. **Audio Recording Module**: Auto-activation upon SOS, noise reduction, and encrypted cloud upload.
-7. **Video Recording**: Dual camera stream capture to cloud storage for tamper-proof legal evidence.
-8. **Fake Call Generator**: Schedule custom calls with realistic audio playback to assist in escape situations.
-9. **AI Chatbot Assistant**: Safe-walk tips, immediate first aid, map directions to nearby police/hospitals, legal rights resources.
-10. **Safe Route Recommendation**: AI pathfinding utilizing crime maps, street lighting parameters, density estimation, and active patrol zones.
-11. **Risk Zone Prediction**: Dynamic danger level scoring for neighborhoods (Safe, Moderate, High) updated by time of day and crime feeds.
-12. **Crowd-Sourced Incident Reporting**: File verified geo-tagged safety flags (harassment, stalking, poor lighting) with photo/video.
-13. **Nearby Emergency Services**: Instant lookup and maps routing for Hospitals, Police stations, NGOs, and Public transport hubs.
-14. **Wearable Device Integration**: BLE connections to rings, smartwatches, and fitness bands tracking heart-rate anomalies.
-15. **AI Voice Recognition**: Offline voice parsing targeting phrase commands ("Help me", "Emergency") utilizing background listening.
-16. **Face Recognition**: Identifying verified family members, missing persons, or known high-risk offender watchlists.
-17. **Cloud Evidence Storage**: E2E encrypted files backups stored securely on AWS S3 / Azure Blob Storage.
-18. **AI Behavior Analysis**: Suspicious movement logs, repeated follow-backs, or unusual physical stalling alerts.
-19. **Incident Timeline**: Immutable records log for SOS timestamp, GPS logs, SMS triggers, and media records for legal validation.
-20. **Administrative Dashboard**: Operations panel for analytical mapping, crime hotspots visualization, and service alerts monitoring.
+| Feature | Description |
+|---|---|
+| 🆘 **Smart SOS** | One-touch emergency broadcast to contacts + police |
+| 🗺️ **Safe Route Finder** | Walk / Drive / Transit routes with safety scoring |
+| 👮 **Police Lookup** | Nearest police stations by GPS, with call & directions |
+| 🤖 **AI Chatbot** | Legal rights, safety tips, emergency procedures |
+| 📞 **Fake Call** | Realistic incoming call simulation to escape danger |
+| 🔐 **Secure Auth** | JWT-based authentication with profile management |
+| 📍 **Live Geocoding** | 5-tier geocoding — any Indian city, road, or landmark |
+| 🏥 **Emergency Services** | Nearby hospitals, NGOs, and public transport |
 
 ---
 
-## Technology Stack
+## 🛠️ Technology Stack
 
 | Layer | Technology |
-| :--- | :--- |
+|:---|:---|
 | **Mobile App** | React Native (Expo) |
-| **Backend Services** | FastAPI (Python 3.10+) |
-| **Databases** | PostgreSQL (Relational), MongoDB (Spatial/GeoJSON) |
-| **AI/ML Engine** | PyTorch, Scikit-learn, TensorFlow |
-| **Computer Vision** | OpenCV, MediaPipe |
-| **NLP & Chatbot** | spaCy, HuggingFace Transformers |
-| **Notifications** | Firebase Cloud Messaging (FCM) |
-| **IoT Connectivity** | MQTT (Eclipse Mosquitto), BLE |
-| **Cloud Storage** | MinIO (AWS S3 Compatible) |
+| **Web Dashboard** | Vanilla JS + Leaflet.js |
+| **Backend API** | FastAPI (Python 3.10+) |
+| **Routing Engine** | OSRM (Open Source Routing Machine) |
+| **Geocoding** | Nominatim / Photon / OpenStreetMap |
+| **POI Lookup** | Overpass API |
+| **Maps** | Leaflet.js (OpenStreetMap tiles) |
+
+> **No paid APIs required** — entirely free & open-source stack.
 
 ---
 
-## Repository Layout
+## 📁 Repository Layout
 
-```text
-├── docs/                     # Design docs, architecture details, and API schemas
-├── frontend/                 # React Native Mobile App codebase (Expo)
-├── backend/                  # FastAPI Microservices
-│   ├── authentication-service/
-│   ├── user-service/
-│   ├── emergency-service/
-│   ├── gps-service/
-│   ├── notification-service/
-│   └── ai-service/
-├── database/                 # SQL schemas, Mongo init scripts, and seed files
-├── deployment/               # Deployment manifests (Docker & Kubernetes)
-│   ├── docker/               # docker-compose and local config files
-│   └── kubernetes/           # K8s YAML deployment specs
-└── tests/                    # Integration and system tests
+```
+women-safety-system/
+├── backend/
+│   └── main.py              # FastAPI monolith — all endpoints
+├── frontend-web/
+│   ├── index.html           # Web dashboard
+│   ├── app.js               # Map, routing, geocoding logic
+│   └── style.css            # Dark theme styling
+├── frontend/
+│   ├── App.js               # React Native navigator
+│   ├── screens/
+│   │   ├── AuthScreen.js
+│   │   ├── DashboardScreen.js
+│   │   ├── SOSScreen.js
+│   │   ├── MapScreen.js
+│   │   ├── ChatbotScreen.js
+│   │   ├── ProfileScreen.js
+│   │   └── FakeCallScreen.js
+│   └── services/
+│       └── api.js           # API service layer
+└── README.md
 ```
 
 ---
 
-## Quick Start (Local Development)
+## 🚀 Quick Start
 
-### 1. Prerequisites
-- Docker & Docker Compose
-- Node.js v18+ & npm
+### Prerequisites
 - Python 3.10+
+- Node.js 18+ & npm
+- Expo CLI (`npm install -g expo-cli`)
 
-### 2. Startup Backend Infrastructure
-Run the following from the root directory:
+### 1. Start Backend
+
 ```bash
-docker-compose -f deployment/docker/docker-compose.yml up --build -d
+cd backend
+pip install fastapi uvicorn httpx python-multipart
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-This launches:
-- PostgreSQL (`localhost:5432`)
-- MongoDB (`localhost:27017`)
-- MQTT Broker (`localhost:1883`)
-- FastAPI Gateway & Services
 
-### 3. Launch Mobile Application
+Backend runs at: `http://localhost:8000`  
+API docs at: `http://localhost:8000/docs`
+
+### 2. Launch Web Dashboard
+
+```bash
+cd frontend-web
+python -m http.server 3000
+```
+
+Open: `http://localhost:3000`
+
+### 3. Run Mobile App
+
 ```bash
 cd frontend
 npm install
 npx expo start
 ```
+
+Scan the QR code with the **Expo Go** app on your phone.
+
+---
+
+## 🗺️ Safe Route Finder
+
+The route finder uses the **OSRM public routing API** with multi-modal support:
+
+- 🚶 **Walking** — pedestrian-optimized paths
+- 🚗 **Driving** — road network routing
+- 🚲 **Cycling** — bike-friendly corridors
+
+Safety scoring is based on:
+- **Time of day** — night-time routes scored more conservatively
+- **Populated areas** — routes through commercial/busy zones preferred
+- **Route length vs direct distance** — penalizes unnecessarily long detours
+- **Proximity to landmarks** — hospitals, police stations boost safety score
+
+---
+
+## 🆘 SOS Flow
+
+```
+User triggers SOS
+      │
+      ▼
+GPS location captured
+      │
+      ▼
+Emergency message composed with:
+  - Live coordinates (Google Maps link)
+  - Timestamp
+  - User name & blood group
+      │
+      ▼
+Dispatched via:
+  - SMS (Twilio / fallback)
+  - WhatsApp message link
+  - Direct call to emergency contact
+  - Police alert (Disha Helpline: 1091)
+```
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/auth/register` | Register new user |
+| `POST` | `/auth/login` | Login & get JWT token |
+| `GET` | `/safe-route` | Get safe routes between two points |
+| `GET` | `/geocode` | Geocode any Indian address/landmark |
+| `GET` | `/police-stations` | Nearest police stations by coordinates |
+| `POST` | `/sos/trigger` | Trigger emergency SOS |
+| `POST` | `/chatbot` | AI chatbot query |
+| `GET` | `/fake-call` | Generate a fake incoming call |
+
+---
+
+## 🇮🇳 India-Specific Features
+
+- **Disha Helpline (1091)** — Women's safety hotline integrated
+- **Police: 112** — Direct emergency dial
+- **Default region:** Amaravati, Andhra Pradesh
+- **Geocoding** works for any Indian city, district, road, or landmark
+- **All 28 states + UTs** covered via OpenStreetMap data
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## 👩‍💻 Author
+
+**Siva Sathvik** — [@SivaSathvik6369](https://github.com/SivaSathvik6369)
+
+> Built with ❤️ for women's safety across India 🇮🇳

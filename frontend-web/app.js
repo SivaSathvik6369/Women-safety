@@ -316,7 +316,7 @@ function loadProfileAndStart() {
                 currentUserId = data.user_id;
                 localStorage.setItem("aegis_user_id", currentUserId);
             }
-            document.getElementById("user-greeting-name").innerText = `Welcome Back, ${data.full_name || "User"}`;
+            document.getElementById("user-greeting-name").innerText = `Welcome Back, ${data.full_name || "Siva Sathvik"}`;
             document.getElementById("blood-group").value = data.blood_group || "O+";
             document.getElementById("medical-conditions").value = data.medical_conditions || "None";
             document.getElementById("allergies").value = data.allergies || "None";
@@ -334,7 +334,7 @@ function loadProfileAndStart() {
             console.error("Session load failed:", err);
             // If it failed due to network offline (e.g. Render booting up), let them see dashboard anyway
             if (err.message !== "Session invalid or expired") {
-                document.getElementById("user-greeting-name").innerText = "Welcome Back, User";
+                document.getElementById("user-greeting-name").innerText = "Welcome Back, Siva Sathvik";
                 loadContactsList();
                 showAuthScreen("dashboard");
             }

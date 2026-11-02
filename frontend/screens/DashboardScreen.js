@@ -12,7 +12,7 @@ import {
 import { api, getAuthState } from '../services/api';
 
 export default function DashboardScreen({ navigation }) {
-  const [userName, setUserName] = useState('User');
+  const [userName, setUserName] = useState('Siva Sathvik');
   const [safetyScore, setSafetyScore] = useState(94);
   const [zoneLabel, setZoneLabel] = useState('Safe Zone');
   const [telemetryStatus, setTelemetryStatus] = useState('Normal Walking');

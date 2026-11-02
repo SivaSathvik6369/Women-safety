@@ -124,8 +124,8 @@ INDIAN_PLACES = {
 # ==========================================
 class UserRegister(BaseModel):
     phone_number: str = Field(..., example="+1234567890")
-    full_name: str = Field(..., example="Jane Doe")
-    email: Optional[str] = Field(None, example="jane.doe@example.com")
+    full_name: str = Field(..., example="Siva Sathvik")
+    email: Optional[str] = Field(None, example="siva.sathvik@example.com")
     password: str = Field(..., min_length=6, example="password123")
 
 class UserLogin(BaseModel):
@@ -142,8 +142,8 @@ class MedicalInfo(BaseModel):
     allergies: Optional[str] = Field(None, example="Penicillin")
 
 class UserProfileUpdate(BaseModel):
-    full_name: Optional[str] = Field(None, example="Jane Doe")
-    email: Optional[str] = Field(None, example="jane.doe@example.com")
+    full_name: Optional[str] = Field(None, example="Siva Sathvik")
+    email: Optional[str] = Field(None, example="siva.sathvik@example.com")
     medical_info: Optional[MedicalInfo] = None
 
 class ContactCreate(BaseModel):
@@ -341,8 +341,8 @@ def get_user_profile(phone_number: str, db: Session = Depends(get_db)):
         if phone_number == "+1234567890":
             return {
                 "user_id": 1,
-                "phone_number": "+1234567890", "full_name": "Jane Doe",
-                "email": "jane@aegis.com", "blood_group": "O+",
+                "phone_number": "+1234567890", "full_name": "Siva Sathvik",
+                "email": "siva.sathvik@aegis.com", "blood_group": "O+",
                 "medical_conditions": "None", "allergies": "Penicillin"
             }
         raise HTTPException(status_code=404, detail="User not found")
@@ -467,7 +467,7 @@ def activate_sos(payload: SOSActivateRequest, db: Session = Depends(get_db)):
         contacts = db.query(EmergencyContactDB).all()
         
     user = db.query(UserDB).filter(UserDB.id == payload.user_id).first()
-    user_name = user.full_name if (user and user.full_name) else "Aegis User"
+    user_name = user.full_name if (user and user.full_name) else "Siva Sathvik"
     
     sms_body = (
         f"🚨 Aegis Emergency SOS! {user_name} needs immediate help.\n"
